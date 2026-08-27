@@ -547,7 +547,7 @@ jobs:
 
       - name: Upload APK artefact
         if: ${{ success() && (env.RUN_EMULATOR_CHECKS == 'true' || env.PUBLISH_DIAGNOSTIC_ARTIFACT == 'true') }}
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ${{ env.SIGNING_MODE == 'production' && 'AI_Console_v1.5.4_production-release-signed' || (env.RUN_EMULATOR_CHECKS == 'true' && 'AI_Console_v1.5.4_preview-debug-signed' || 'AI_Console_v1.5.4_preview-debug-signed-diagnostic') }}
           path: |
@@ -559,7 +559,7 @@ jobs:
 
       - name: Upload Android diagnostics artefacts
         if: always()
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: AI_Console_v1.5.4_android-ci-diagnostics
           path: ci-diagnostics/**
