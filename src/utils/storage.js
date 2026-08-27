@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
-import { createPinVerifier } from './pinVerifier.mjs';
+import { createPinVerifierAsync } from './pinVerifier.mjs';
 import { normaliseCState, serialiseCState } from '../workspaces/workspaceSchema.mjs';
 
 const SECURE_KEY_NAME='openRouterKey'; const SECURE_TOGETHER_KEY_NAME='togetherApiKey'; const SECURE_LLM_SETTINGS_PIN='llmSettingsPin';
@@ -15,7 +15,7 @@ export async function getTogetherApiKeyResult(){try{return{ok:true,value:(await 
 export async function getTogetherApiKey(){return(await getTogetherApiKeyResult()).value;}
 export function setTogetherApiKey(value){const op=async()=>{try{if(value)await SecureStore.setItemAsync(SECURE_TOGETHER_KEY_NAME,value);else await SecureStore.deleteItemAsync(SECURE_TOGETHER_KEY_NAME);return{ok:true,persisted:true,status:'SAVED_SECURELY'};}catch(e){return{ok:false,persisted:false,status:'SESSION_ONLY',error:e?.message||'Together AI secure key persistence is unavailable.'};}}; secureWriteChain=secureWriteChain.then(op,op); return secureWriteChain;}
 export async function getLLMSettingsPin(){try{return(await SecureStore.getItemAsync(SECURE_LLM_SETTINGS_PIN))||'';}catch(_){throw new Error('Secure PIN storage could not be read on this device.');}}
-export async function setLLMSettingsPin(value){try{if(value)await SecureStore.setItemAsync(SECURE_LLM_SETTINGS_PIN,createPinVerifier(value));else await SecureStore.deleteItemAsync(SECURE_LLM_SETTINGS_PIN);return{ok:true};}catch(_){throw new Error('Secure PIN storage is unavailable on this device.');}}
+export async function setLLMSettingsPin(value){try{if(value)await SecureStore.setItemAsync(SECURE_LLM_SETTINGS_PIN,await createPinVerifierAsync(value));else await SecureStore.deleteItemAsync(SECURE_LLM_SETTINGS_PIN);return{ok:true};}catch(_){throw new Error('Secure PIN storage is unavailable on this device.');}}
 
 export async function getJSONResult(key,fallback){try{const raw=await AsyncStorage.getItem(key);if(raw==null)return{ok:true,status:'MISSING',value:fallback};try{return{ok:true,status:'FOUND',value:JSON.parse(raw)};}catch(e){return{ok:false,status:'CORRUPT',value:fallback,error:e?.message||'Stored JSON is corrupt.'};}}catch(e){return{ok:false,status:'READ_FAILED',value:fallback,error:e?.message||'Storage read failed.'};}}
 export async function getJSON(key,fallback){return(await getJSONResult(key,fallback)).value;}

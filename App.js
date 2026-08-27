@@ -28,7 +28,7 @@ import { DEFAULT_SYSTEM_PROMPT, commitStateTransaction, formatProviderName, getA
 import { sanitizeChatsForPersistence } from './src/utils/privacy.mjs';
 import { completeChatCompletion, fetchModels, streamChatCompletion } from './src/utils/streamChat';
 import { DEFAULT_PROVIDER_MODELS, INITIAL_PROVIDER_MODEL_GROUPS, normaliseProviderId, providerLabel, ProviderId } from './src/providers/providerRegistry.mjs';
-import { isLegacyPlainPinRecord, pinVerifierNeedsUpgrade, verifyPinAgainstRecord } from './src/utils/pinVerifier.mjs';
+import { isLegacyPlainPinRecord, pinVerifierNeedsUpgrade, verifyPinAgainstRecordAsync } from './src/utils/pinVerifier.mjs';
 import { pickAndExtractFile, pickApkFile } from './src/utils/fileUpload';
 import { captureCameraImage, loadImageDataUrl, pickGalleryImage, pickImageFile } from './src/utils/mediaPicker';
 import { apkContextSummary } from './src/utils/uploadPolicy.mjs';
@@ -538,7 +538,7 @@ ${project}`);
         const remainingMs = pinThrottleRemainingMs(persistedThrottle, now);
         if (remainingMs > 0) return `Too many incorrect PIN attempts. Try again in ${Math.max(1, Math.ceil(remainingMs / 60000))} minute(s).`;
         const storedPin = await getLLMSettingsPin();
-        if (!storedPin || !verifyPinAgainstRecord(pin, storedPin)) {
+        if (!storedPin || !(await verifyPinAgainstRecordAsync(pin, storedPin))) {
           const nextThrottle = recordPinFailure(persistedThrottle, now);
           pinThrottleRef.current = nextThrottle;
           await setJSON(PIN_THROTTLE_STORAGE_KEY, nextThrottle);

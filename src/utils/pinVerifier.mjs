@@ -1,5 +1,5 @@
 const PIN_KDF_VERSION = 'v2';
-const PIN_KDF_ITERATIONS = 600000;
+const PIN_KDF_ITERATIONS = 100000;
 export const LEGACY_PIN_KDF_ITERATIONS = 12000;
 const PIN_KDF_SALT_BYTES = 16;
 
@@ -112,6 +112,29 @@ export function pbkdf2Sha256(password, salt, iterations = PIN_KDF_ITERATIONS, le
   return output.slice(0, length);
 }
 
+const yieldToUi = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+export async function pbkdf2Sha256Async(password, salt, iterations = PIN_KDF_ITERATIONS, length = 32, { yieldEvery = 256 } = {}) {
+  if (!Number.isInteger(iterations) || iterations < 1) throw new Error('Invalid KDF iteration count.');
+  if (!Number.isInteger(yieldEvery) || yieldEvery < 1) throw new Error('Invalid KDF yield interval.');
+  const key = utf8Bytes(password);
+  const saltBytes = salt instanceof Uint8Array ? salt : utf8Bytes(salt);
+  const blocks = Math.ceil(length / 32);
+  const output = new Uint8Array(blocks * 32);
+  await yieldToUi();
+  for (let blockIndex = 1; blockIndex <= blocks; blockIndex += 1) {
+    let u = hmacSha256(key, concatBytes(saltBytes, int32be(blockIndex)));
+    const t = Uint8Array.from(u);
+    for (let round = 1; round < iterations; round += 1) {
+      u = hmacSha256(key, u);
+      for (let i = 0; i < t.length; i += 1) t[i] ^= u[i];
+      if (round % yieldEvery === 0) await yieldToUi();
+    }
+    output.set(t, (blockIndex - 1) * 32);
+  }
+  return output.slice(0, length);
+}
+
 function toHex(bytes) { return Array.from(bytes, (value) => value.toString(16).padStart(2, '0')).join(''); }
 function fromHex(value) {
   if (!/^[0-9a-f]*$/i.test(value) || value.length % 2) return null;
@@ -147,6 +170,12 @@ export function createPinVerifier(pin, { iterations = PIN_KDF_ITERATIONS, salt =
   return `${PIN_KDF_VERSION}$${iterations}$${toHex(salt)}$${toHex(derived)}`;
 }
 
+export async function createPinVerifierAsync(pin, { iterations = PIN_KDF_ITERATIONS, salt = randomSalt(), yieldEvery = 256 } = {}) {
+  if (!/^\d{6}$/.test(String(pin))) throw new Error('PIN must contain exactly 6 digits.');
+  const derived = await pbkdf2Sha256Async(String(pin), salt, iterations, 32, { yieldEvery });
+  return `${PIN_KDF_VERSION}$${iterations}$${toHex(salt)}$${toHex(derived)}`;
+}
+
 export function isLegacyPlainPinRecord(record) { return /^\d{6}$/.test(String(record || '')); }
 
 export function verifyPinAgainstRecord(pin, record) {
@@ -164,6 +193,21 @@ export function verifyPinAgainstRecord(pin, record) {
   return timingSafeEqual(actual, expected);
 }
 
-export function pinVerifierNeedsUpgrade(record) { const parts=String(record||'').split('$'); return isLegacyPlainPinRecord(record) || parts.length!==4 || parts[0]!==PIN_KDF_VERSION || Number(parts[1])<PIN_KDF_ITERATIONS; }
+export async function verifyPinAgainstRecordAsync(pin, record, { yieldEvery = 256 } = {}) {
+  const candidate = String(pin ?? '');
+  const stored = String(record ?? '');
+  if (!/^\d{6}$/.test(candidate) || !stored) return false;
+  if (isLegacyPlainPinRecord(stored)) return candidate === stored;
+  const parts = stored.split('$');
+  if (parts.length !== 4 || !['v1', PIN_KDF_VERSION].includes(parts[0])) return false;
+  const iterations = Number(parts[1]);
+  const salt = fromHex(parts[2]);
+  const expected = fromHex(parts[3]);
+  if (!salt || !expected || !Number.isInteger(iterations) || iterations < 1000 || iterations > 1000000) return false;
+  const actual = await pbkdf2Sha256Async(candidate, salt, iterations, expected.length, { yieldEvery });
+  return timingSafeEqual(actual, expected);
+}
+
+export function pinVerifierNeedsUpgrade(record) { const parts=String(record||'').split('$'); return isLegacyPlainPinRecord(record) || parts.length!==4 || parts[0]!==PIN_KDF_VERSION || Number(parts[1])!==PIN_KDF_ITERATIONS; }
 
 export const PIN_VERIFIER_POLICY = Object.freeze({ version: PIN_KDF_VERSION, iterations: PIN_KDF_ITERATIONS, saltBytes: PIN_KDF_SALT_BYTES });
