@@ -504,12 +504,12 @@ jobs:
         run: |
           set +e
           mkdir -p "$DIAGNOSTICS_DIR"
-          adb logcat -d > "$DIAGNOSTICS_DIR/logcat-full.txt" 2>/dev/null
+          timeout 30 adb logcat -d > "$DIAGNOSTICS_DIR/logcat-full.txt" 2>/dev/null || true
           grep -Eai 'FATAL EXCEPTION|UnsatisfiedLinkError|NoClassDefFoundError|ActivityNotFoundException|ReactNativeJS|SoLoader|SIGSEGV|ANR|permission denial|has died' "$DIAGNOSTICS_DIR/logcat-full.txt" > "$DIAGNOSTICS_DIR/logcat-fatal-filtered.txt" 2>/dev/null
-          adb shell dumpsys activity > "$DIAGNOSTICS_DIR/dumpsys-activity.txt" 2>/dev/null
-          adb shell dumpsys package "$PACKAGE_NAME" > "$DIAGNOSTICS_DIR/dumpsys-package.txt" 2>/dev/null
-          adb shell dumpsys dropbox --print > "$DIAGNOSTICS_DIR/dropbox-crash-entries.txt" 2>/dev/null
-          adb shell ls -la /data/tombstones > "$DIAGNOSTICS_DIR/tombstones-list.txt" 2>/dev/null
+          timeout 30 adb shell dumpsys activity > "$DIAGNOSTICS_DIR/dumpsys-activity.txt" 2>/dev/null || true
+          timeout 30 adb shell dumpsys package "$PACKAGE_NAME" > "$DIAGNOSTICS_DIR/dumpsys-package.txt" 2>/dev/null || true
+          timeout 30 adb shell dumpsys dropbox --print > "$DIAGNOSTICS_DIR/dropbox-crash-entries.txt" 2>/dev/null || true
+          timeout 30 adb shell ls -la /data/tombstones > "$DIAGNOSTICS_DIR/tombstones-list.txt" 2>/dev/null || true
           {
             echo "FATAL_EXCEPTION=$(grep -Eai 'FATAL EXCEPTION' "$DIAGNOSTICS_DIR/logcat-full.txt" >/dev/null 2>&1 && echo YES || echo NO)"
             echo "UNSATISFIED_LINK_ERROR=$(grep -Eai 'UnsatisfiedLinkError' "$DIAGNOSTICS_DIR/logcat-full.txt" >/dev/null 2>&1 && echo YES || echo NO)"
