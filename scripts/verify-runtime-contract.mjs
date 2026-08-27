@@ -14,7 +14,7 @@ const EXPECTED_ANDROID_VERSION_CODE = 19;
 const EXPECTED_ANDROID_PACKAGE = 'com.nexarenew.aiconsole';
 const EXPECTED_EXPO_MAJOR = '57';
 const EXPECTED_REACT = '19.2.3';
-const EXPECTED_REACT_NATIVE = '0.86.2';
+const EXPECTED_REACT_NATIVE = '0.86.3';
 
 if (pkg.version !== EXPECTED_VERSION || app.version !== EXPECTED_VERSION) {
   fail(`AI Console release identity must be v${EXPECTED_VERSION}.`);
