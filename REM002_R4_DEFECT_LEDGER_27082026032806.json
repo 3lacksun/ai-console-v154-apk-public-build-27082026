@@ -1,0 +1,31 @@
+{
+  "project": "Dr Stones Command Centre",
+  "release": "v1.5.4 REM002 R4",
+  "generatedAt": "2026-08-27T03:28:06+01:00",
+  "inputHandover": "DR_STONES_COMMAND_CENTRE_V1_5_4_REM002_R3_RECONSTRUCTION_INTEGRITY_PROVISIONAL_HANDOVER_27082026014110.zip",
+  "inputSha256": "5975193063078f689ef4eb3f2e088563e508aac6e1b1137d7e23c64f0f8a6664",
+  "rem002Version": "1.4.0",
+  "masterRules": "1.2.13 / 20260823-01",
+  "localActionableOpen": 0,
+  "productionVerdict": "NO_GO_EXTERNAL_GATES",
+  "defects": [
+    {
+      "id": "DSCC-V154-GOV-003",
+      "severity": "MEDIUM",
+      "category": "Governance / release evidence integrity",
+      "status": "CLOSED_VERIFIED_R4",
+      "firstObserved": "2026-08-27T03:28:06+01:00",
+      "description": "R3 current-facing continuation records identify the live canonical Master Rules as v1.2.19 / 20260826-03, while a fresh retrieval of the authoritative /Master Documents/MASTER_LLM_OPERATING_RULES.md returns v1.2.13 / 20260823-01.",
+      "rootCause": "The prior run persisted an authority identity that was not the identity of the file currently present at the canonical Master Documents path.",
+      "remediation": "Preserve R3 evidence as historical provenance; reconcile R4 current-facing baseline/status/lineage/master pointer; embed the exact live canonical Master file bytes.",
+      "acceptanceCriteria": [
+        "Current R4 continuation metadata identifies v1.2.13 / 20260823-01",
+        "Embedded Master copy SHA-256 equals 2530b14be9ba31d06e296468a39a17d511ee81dfdb9acda03a23c3a5a128ba75",
+        "R3 v1.2.19 records remain provenance rather than silently rewritten history",
+        "Application source/behaviour remains unchanged",
+        "Full available regression and package verification pass"
+      ],
+      "verification": "PASS: current-facing R4 records identify v1.2.13/20260823-01; embedded Master SHA-256 exact; 129/129 implementation files byte-identical to R3; static/CI/runtime/YAML/syntax/JSON/deterministic regression passed."
+    }
+  ]
+}

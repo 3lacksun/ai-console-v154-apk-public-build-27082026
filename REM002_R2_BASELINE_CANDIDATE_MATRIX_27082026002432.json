@@ -1,0 +1,39 @@
+{
+  "run": "REM002-R2-27082026002432",
+  "selectedBaseline": {
+    "filename": "DR_STONES_COMMAND_CENTRE_V1_5_4_REM002_R1_CI_INTEGRITY_REMEDIATED_PROVISIONAL_HANDOVER_26082026224347.zip",
+    "sha256": "82ace7a433c2558dcc4b6c77278e79f79cbd6e85f71e5890468c1b72455cb756",
+    "reason": "Genuine persisted v1.5.4 lineage plus R1 release-control/integrity remediations; stronger provenance than reconstruction-derived candidates."
+  },
+  "candidates": [
+    {
+      "candidate": "v1.5.3 production-authoritative",
+      "filename": "DR_STONES_COMMAND_CENTRE_V1_5_3_DUAL_PROVIDER_HANDOVER_26082026103314.zip",
+      "sha256": "69d93cdacb66343e5c99ca9ac4d7b9adb6d7fc88faa1865969d1f092aad1c039",
+      "classification": "AUTHORITATIVE_PRODUCTION_RELEASE",
+      "selectedForEdits": false
+    },
+    {
+      "candidate": "original v1.5.4 provisional",
+      "filename": "DR_STONES_COMMAND_CENTRE_V1_5_4_LOCAL_REMEDIATION_PROVISIONAL_HANDOVER_26082026130837.zip",
+      "sha256": "d57bf2fcf4a21d31df7f7e7638acb87b4f7edd497ed966605a4848400c01ba7d",
+      "classification": "GENUINE_PERSISTED_PROVISIONAL_LINEAGE",
+      "selectedForEdits": false
+    },
+    {
+      "candidate": "REM002 R1",
+      "filename": "DR_STONES_COMMAND_CENTRE_V1_5_4_REM002_R1_CI_INTEGRITY_REMEDIATED_PROVISIONAL_HANDOVER_26082026224347.zip",
+      "sha256": "82ace7a433c2558dcc4b6c77278e79f79cbd6e85f71e5890468c1b72455cb756",
+      "classification": "GENUINE_LINEAGE_PROVISIONAL_SUCCESSOR",
+      "selectedForEdits": true
+    },
+    {
+      "candidate": "23:29 reconstruction-derived REM002",
+      "filename": "DR_STONES_COMMAND_CENTRE_V1_5_4_REM002_REMEDIATED_PROVISIONAL_26082026232918.zip",
+      "sha256": "6587543bfcf5ff31ee9cee4b3fd9bd343e8f8b8818eac6fff9e804453a653076",
+      "classification": "PROVISIONAL_RECONSTRUCTION_DERIVED_EVIDENCE_ONLY",
+      "selectedForEdits": false,
+      "note": "Its own report identifies reconstructed input SHA 37d8857f...; useful redaction-guard concept incorporated independently, but later timestamp alone does not supersede stronger provenance."
+    }
+  ]
+}

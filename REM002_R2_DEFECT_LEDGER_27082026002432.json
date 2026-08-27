@@ -1,0 +1,73 @@
+{
+  "run": "REM002-R2-27082026002432",
+  "project": "Dr Stones Command Centre",
+  "version": "1.5.4",
+  "masterRules": "1.2.19 / 20260826-03",
+  "rem002Version": "1.4.0",
+  "inputSha256": "82ace7a433c2558dcc4b6c77278e79f79cbd6e85f71e5890468c1b72455cb756",
+  "defects": [
+    {
+      "id": "DSCC-V154-CI-001",
+      "severity": "HIGH",
+      "status": "CLOSED_PREDECESSOR_R1",
+      "component": ".github/workflows/android-apk.yml",
+      "description": "v1.5.4 APK inspection expected versionName='1.5.3'",
+      "acceptance": [
+        "workflow expects versionName=1.5.4",
+        "workflow contains no versionName=1.5.3",
+        "static check PASS",
+        "deterministic suite PASS"
+      ]
+    },
+    {
+      "id": "DSCC-V154-PKG-001",
+      "severity": "MEDIUM",
+      "status": "CLOSED_PREDECESSOR_R1",
+      "component": "handover integrity manifests",
+      "description": "Current-facing predecessor checksum lists referenced missing/stale files",
+      "acceptance": [
+        "current checksum manifests reference only current files",
+        "all hashes match",
+        "clean-package verification PASS"
+      ]
+    },
+    {
+      "id": "DSCC-V154-INT-002",
+      "severity": "MEDIUM",
+      "status": "CLOSED_R2",
+      "component": "scripts/static-check.mjs",
+      "description": "Active source/config verification did not fail closed on reconstruction redaction sentinels despite a demonstrated code-dump corruption failure mode.",
+      "remediation": "Added active source/config redaction-sentinel scan while excluding historical documentation/evidence.",
+      "acceptance": [
+        "normal static check PASS",
+        "injected active [REDACTED:...] sentinel makes static check FAIL",
+        "sentinel removal restores PASS",
+        "deterministic suite PASS"
+      ]
+    },
+    {
+      "id": "DSCC-V154-GOV-001",
+      "severity": "MEDIUM",
+      "status": "CLOSED_R2",
+      "component": "docs/master/README.md",
+      "description": "The current-facing master README described package governance using stale v1.2.14 lineage language, creating ambiguity against current v1.2.19 governance.",
+      "remediation": "Clarified current v1.2.19 authority and retained v1.2.18/v1.2.14 material only as historical provenance.",
+      "acceptance": [
+        "current-facing README states v1.2.19 / 20260826-03",
+        "historical snapshots are explicitly non-authoritative for current package",
+        "BASELINE_LOCK and current authority pointer agree"
+      ]
+    }
+  ],
+  "observations": [
+    {
+      "id": "DSCC-V154-PROV-OBS-001",
+      "status": "PARTIAL_EXTERNAL",
+      "description": "Current Together official documentation is internally inconsistent about serverless availability of moonshotai/Kimi-K2.5. Source model sync already replaces unavailable selected defaults from the live returned catalogue; no speculative model substitution was made.",
+      "requiredEvidence": "Credentialed Together GET /v1/models and chat execution."
+    }
+  ],
+  "localActionableOpen": 0,
+  "productionVerdict": "NO_GO_EXTERNAL_GATES",
+  "candidateHandover": "DR_STONES_COMMAND_CENTRE_V1_5_4_REM002_R2_GOVERNANCE_INTEGRITY_CONVERGED_PROVISIONAL_27082026002432.zip"
+}

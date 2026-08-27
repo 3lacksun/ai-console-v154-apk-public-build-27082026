@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "timestamp": "2026-08-26T13:08:37+01:00",
+  "masterRules": "1.2.18/20260826-02",
+  "exec002": "1.2.0",
+  "results": {
+    "static_check": "PASS",
+    "ci_version_guard": "PASS",
+    "runtime_contract": "PASS",
+    "targeted_completion_tests": "7/7 PASS",
+    "archive_regression": "16/16 PASS",
+    "full_deterministic": "130 PASS / 0 FAIL / 0 SKIP",
+    "apk_build": "EXTERNAL_BLOCKED: project policy requires GitHub workflow with run_emulator_checks=true",
+    "live_provider": "UNVERIFIABLE: credentials absent",
+    "android_device": "UNVERIFIABLE: ADB unavailable",
+    "accessibility_device": "UNVERIFIABLE: TalkBack/device unavailable",
+    "package_integrity": "PASS",
+    "clean_reextract": "PASS",
+    "package_manifest_parity": "209/209 PASS on prior sealed candidate; final package reverified below",
+    "clean_extracted_static": "PASS",
+    "clean_extracted_deterministic": "130 PASS / 0 FAIL / 0 SKIP"
+  },
+  "localActionableTasksOpen": 0,
+  "localVerdict": "LOCAL_GO",
+  "packageVerdict": "PACKAGE_GO",
+  "productionVerdict": "PRODUCTION_NO_GO_EXTERNAL_GATES"
+}

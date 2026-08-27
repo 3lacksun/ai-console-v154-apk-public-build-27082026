@@ -1,0 +1,15 @@
+file:///mnt/data/dr_stones_rem002_r2/DR_STONES_COMMAND_CENTRE_V1_5_4_REM002_R2_GOVERNANCE_INTEGRITY_CONVERGED_PROVISIONAL_27082026002432/scripts/static-check.mjs:2
+const root=process.cwd(), read=(f)=>fs.readFileSync(path.join(root,f),'utf8'), json=(f)=>JSON.parse(read(f)), assert=(c,m)=>{if(!c)throw new Error(m)};
+                                                                                                                                         ^
+
+Error: Active source/config contains reconstruction redaction sentinel: src/__rem002_redaction_probe.mjs
+    at assert (file:///mnt/data/dr_stones_rem002_r2/DR_STONES_COMMAND_CENTRE_V1_5_4_REM002_R2_GOVERNANCE_INTEGRITY_CONVERGED_PROVISIONAL_27082026002432/scripts/static-check.mjs:2:138)
+    at file:///mnt/data/dr_stones_rem002_r2/DR_STONES_COMMAND_CENTRE_V1_5_4_REM002_R2_GOVERNANCE_INTEGRITY_CONVERGED_PROVISIONAL_27082026002432/scripts/static-check.mjs:36:1
+    at ModuleJob.run (node:internal/modules/esm/module_job:274:25)
+    at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:644:26)
+    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:117:5)
+
+Node.js v22.16.0
+INJECTED_STATIC_CHECK_EXIT=1
+STATIC_CHECK: PASS
+POST_REMOVAL_STATIC_CHECK=PASS

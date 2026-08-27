@@ -1,0 +1,76 @@
+{
+  "expo": {
+    "name": "Dr Stones Command Centre",
+    "slug": "ai-console",
+    "version": "1.5.4",
+    "orientation": "default",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "backgroundColor": "#f8fafc",
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "android": {
+      "package": "com.nexarenew.aiconsole",
+      "softwareKeyboardLayoutMode": "resize",
+      "versionCode": 19,
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#f8fafc"
+      },
+      "permissions": [
+        "INTERNET"
+      ],
+      "blockedPermissions": [
+        "android.permission.SYSTEM_ALERT_WINDOW"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "Allow AI Console to use your microphone for voice input.",
+          "speechRecognitionPermission": "Allow AI Console to convert your speech into text.",
+          "androidSpeechServicePackages": [
+            "com.google.android.googlequicksearchbox",
+            "com.google.android.tts"
+          ]
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow AI Console to select images for the active attachment session.",
+          "cameraPermission": "Allow AI Console to capture images for the active attachment session."
+        }
+      ],
+      "expo-secure-store",
+      "expo-sharing",
+      "expo-status-bar",
+      "./plugins/withAndroidSplashLintTargetApi",
+      "./plugins/withEmbeddedDebugBundle",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#f8fafc",
+          "image": "./assets/splash.png",
+          "imageWidth": 200,
+          "resizeMode": "contain"
+        }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "compileSdkVersion": 36,
+            "targetSdkVersion": 36,
+            "buildToolsVersion": "36.0.0"
+          }
+        }
+      ]
+    ]
+  }
+}

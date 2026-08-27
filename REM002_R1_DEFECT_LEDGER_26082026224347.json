@@ -1,0 +1,45 @@
+{
+  "run": "REM002-R1-26082026224347",
+  "project": "Dr Stones Command Centre",
+  "version": "1.5.4",
+  "masterRules": "1.2.19 / 20260826-03",
+  "inputSha256": "d57bf2fcf4a21d31df7f7e7638acb87b4f7edd497ed966605a4848400c01ba7d",
+  "defects": [
+    {
+      "id": "DSCC-V154-CI-001",
+      "severity": "HIGH",
+      "status": "CLOSED",
+      "component": ".github/workflows/android-apk.yml",
+      "description": "v1.5.4 APK inspection expected versionName='1.5.3'",
+      "acceptance": [
+        "workflow expects versionName=1.5.4",
+        "workflow contains no versionName=1.5.3",
+        "static check PASS",
+        "full deterministic suite PASS"
+      ]
+    },
+    {
+      "id": "DSCC-V154-PKG-001",
+      "severity": "MEDIUM",
+      "status": "CLOSED",
+      "component": "handover integrity manifests",
+      "description": "Current-facing predecessor checksum lists referenced missing/stale files",
+      "acceptance": [
+        "both checksum manifests reference only existing files",
+        "all listed hashes match",
+        "clean-package verification passes"
+      ]
+    }
+  ],
+  "localActionableOpen": 0,
+  "productionVerdict": "NO_GO_EXTERNAL_GATES",
+  "candidateHandover": "DR_STONES_COMMAND_CENTRE_V1_5_4_REM002_R1_CI_INTEGRITY_REMEDIATED_PROVISIONAL_HANDOVER_26082026224347.zip",
+  "verification": {
+    "static": "PASS",
+    "ciVersionGuard": "PASS",
+    "runtimeContract": "PASS",
+    "deterministic": "131/131 PASS",
+    "checksumManifests": "PASS",
+    "cleanPackage": "PENDING"
+  }
+}

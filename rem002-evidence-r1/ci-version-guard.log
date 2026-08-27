@@ -1,0 +1,2 @@
+ANDROID_SDK_36_RESOLUTION: guarded by Expo SDK 57 package alignment; workflow verifies generated Gradle compile/target SDK after Expo prebuild.
+CI_VERSION_GUARD: PASS

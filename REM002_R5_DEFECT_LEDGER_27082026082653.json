@@ -1,0 +1,39 @@
+{
+  "project": "Dr Stones Command Centre",
+  "release": "v1.5.4 REM002 R5",
+  "generatedAt": "2026-08-27T08:26:53+01:00",
+  "inputHandover": "DR_STONES_COMMAND_CENTRE_V1_5_4_REM002_R4_MASTER_AUTHORITY_RECONCILED_PROVISIONAL_HANDOVER_27082026032806.zip",
+  "inputSha256": "686cfc698e0ebafca8d868fac6f23894635c3a15680edb4754c99fd354f18175",
+  "rem002Version": "1.4.0",
+  "masterRules": "1.2.13 / 20260823-01",
+  "localActionableOpen": 0,
+  "productionVerdict": "NO_GO_EXTERNAL_GATES",
+  "defects": [
+    {
+      "id": "DSCC-V154-GOV-003",
+      "severity": "MEDIUM",
+      "category": "Governance / release evidence integrity",
+      "status": "CLOSED_VERIFIED_R4",
+      "description": "R3 current-facing governance identity did not match the canonical Master Rules identity.",
+      "verification": "Preserved closed from R4; canonical Master remains v1.2.13 / 20260823-01."
+    },
+    {
+      "id": "DSCC-V154-DOC-004",
+      "severity": "MEDIUM",
+      "category": "Release evidence / GitHub build readiness",
+      "status": "CLOSED_VERIFIED_R5",
+      "firstObserved": "2026-08-27T08:26:53+01:00",
+      "description": "Root current-facing GITHUB_READY_STATUS.md and VERIFICATION_STATUS.md identified the working package as v1.5.3 / versionCode 18 even though the sealed continuation is v1.5.4 / versionCode 19, and retained stale earlier verification counts.",
+      "rootCause": "Predecessor release-readiness files were carried forward without a current-state override or historical label when the v1.5.4 continuation identity changed.",
+      "remediation": "Reconcile both files to v1.5.4/versionCode 19, preserve v1.5.3 explicitly as production authority, and add deterministic regression coverage for current-facing release identity.",
+      "acceptanceCriteria": [
+        "Both current-facing files identify v1.5.4 and versionCode 19",
+        "Both preserve v1.5.3 as production authority",
+        "No current-source statement identifies v1.5.3/versionCode 18",
+        "Deterministic regression passes",
+        "Full available local regression and clean-package verification pass"
+      ],
+      "verification": "Acceptance is verified by the final clean-package/post-seal evidence for this R5 handover; this ledger records the objective criteria without pre-claiming that later gate."
+    }
+  ]
+}

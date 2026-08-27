@@ -1,0 +1,794 @@
+TAP version 13
+# Subtest: safe archive paths are accepted
+ok 1 - safe archive paths are accepted
+  ---
+  duration_ms: 1.088188
+  type: 'test'
+  ...
+# Subtest: traversal and absolute paths are rejected
+ok 2 - traversal and absolute paths are rejected
+  ---
+  duration_ms: 0.400793
+  type: 'test'
+  ...
+# Subtest: zip entry-count, expansion and ratio limits are enforced
+ok 3 - zip entry-count, expansion and ratio limits are enforced
+  ---
+  duration_ms: 2.301071
+  type: 'test'
+  ...
+# Subtest: counts UTF-8 bytes exactly for ASCII and multibyte text
+ok 4 - counts UTF-8 bytes exactly for ASCII and multibyte text
+  ---
+  duration_ms: 0.249289
+  type: 'test'
+  ...
+# Subtest: current release documents use non-colliding release-gate aliases
+ok 5 - current release documents use non-colliding release-gate aliases
+  ---
+  duration_ms: 6.095599
+  type: 'test'
+  ...
+# Subtest: historical colliding report is retained as evidence and explicitly crosswalked
+ok 6 - historical colliding report is retained as evidence and explicitly crosswalked
+  ---
+  duration_ms: 0.410446
+  type: 'test'
+  ...
+# Subtest: provider registry exposes only the two authorised providers
+ok 7 - provider registry exposes only the two authorised providers
+  ---
+  duration_ms: 1.010784
+  type: 'test'
+  ...
+# Subtest: provider headers remain isolated and do not leak OpenRouter metadata to Together
+ok 8 - provider headers remain isolated and do not leak OpenRouter metadata to Together
+  ---
+  duration_ms: 0.255057
+  type: 'test'
+  ...
+# Subtest: provider request bodies preserve shared chat semantics without automatic fallback
+ok 9 - provider request bodies preserve shared chat semantics without automatic fallback
+  ---
+  duration_ms: 0.930175
+  type: 'test'
+  ...
+# Subtest: Together key is treated as prohibited private material
+ok 10 - Together key is treated as prohibited private material
+  ---
+  duration_ms: 0.258833
+  type: 'test'
+  ...
+# Subtest: application wiring uses explicit active-provider selection for chat, Full Voice, Skills, Tasks and documents
+ok 11 - application wiring uses explicit active-provider selection for chat, Full Voice, Skills, Tasks and documents
+  ---
+  duration_ms: 1.895592
+  type: 'test'
+  ...
+# Subtest: PIN throttle locks after five failures and resets after expiry
+ok 12 - PIN throttle locks after five failures and resets after expiry
+  ---
+  duration_ms: 2.408
+  type: 'test'
+  ...
+# Subtest: cancelled offline turns can be explicitly retried and interrupted sends recover as failed
+ok 13 - cancelled offline turns can be explicitly retried and interrupted sends recover as failed
+  ---
+  duration_ms: 0.726444
+  type: 'test'
+  ...
+# Subtest: message deletion removes all descendants and stale bookmarks
+ok 14 - message deletion removes all descendants and stale bookmarks
+  ---
+  duration_ms: 3.344664
+  type: 'test'
+  ...
+# Subtest: active chat is always scoped to the active workspace
+ok 15 - active chat is always scoped to the active workspace
+  ---
+  duration_ms: 2.809412
+  type: 'test'
+  ...
+# Subtest: base64 source length is rejected before decoding when over policy
+ok 16 - base64 source length is rejected before decoding when over policy
+  ---
+  duration_ms: 0.807063
+  type: 'test'
+  ...
+# Subtest: SHA-256 implementation matches standard known vectors
+ok 17 - SHA-256 implementation matches standard known vectors
+  ---
+  duration_ms: 1.098313
+  type: 'test'
+  ...
+# Subtest: Full Voice is a dedicated subordinate chat surface with keyboard fallback and explicit controls
+ok 18 - Full Voice is a dedicated subordinate chat surface with keyboard fallback and explicit controls
+  ---
+  duration_ms: 1.0958
+  type: 'test'
+  ...
+# Subtest: Full Voice uses the shared provider path, active workspace memory path and ordinary chat messages
+ok 19 - Full Voice uses the shared provider path, active workspace memory path and ordinary chat messages
+  ---
+  duration_ms: 1.748154
+  type: 'test'
+  ...
+# Subtest: voice usage provenance stores stable session and turn identifiers without attributing STT or TTS tokens
+ok 20 - voice usage provenance stores stable session and turn identifiers without attributing STT or TTS tokens
+  ---
+  duration_ms: 0.516223
+  type: 'test'
+  ...
+# Subtest: recognition and speech callbacks are identity guarded and lifecycle recovery is conservative
+ok 21 - recognition and speech callbacks are identity guarded and lifecycle recovery is conservative
+  ---
+  duration_ms: 0.240576
+  type: 'test'
+  ...
+# Subtest: raw microphone recording persistence is not enabled
+ok 22 - raw microphone recording persistence is not enabled
+  ---
+  duration_ms: 0.366572
+  type: 'test'
+  ...
+# Subtest: Full Voice Stop cancels the active shared generation and preserves ordinary conversation history
+ok 23 - Full Voice Stop cancels the active shared generation and preserves ordinary conversation history
+  ---
+  duration_ms: 0.270299
+  type: 'test'
+  ...
+# Subtest: compact Document Studio keeps browser content in a bounded scroll surface
+ok 24 - compact Document Studio keeps browser content in a bounded scroll surface
+  ---
+  duration_ms: 1.422993
+  type: 'test'
+  ...
+# Subtest: compact app navigation uses Android safe-area insets rather than legacy SafeAreaView
+ok 25 - compact app navigation uses Android safe-area insets rather than legacy SafeAreaView
+  ---
+  duration_ms: 0.522763
+  type: 'test'
+  ...
+# Subtest: mobile dialogs and bottom sheets use opaque native surfaces
+ok 26 - mobile dialogs and bottom sheets use opaque native surfaces
+  ---
+  duration_ms: 1.32615
+  type: 'test'
+  ...
+# Subtest: PIN gate serialises and contains submission failures
+ok 27 - PIN gate serialises and contains submission failures
+  ---
+  duration_ms: 2.478814
+  type: 'test'
+  ...
+# Subtest: conversation streaming is keyed by chat and request id with stale-callback guard
+ok 28 - conversation streaming is keyed by chat and request id with stale-callback guard
+  ---
+  duration_ms: 2.025123
+  type: 'test'
+  ...
+# Subtest: speech and mobile accessibility contract is present
+ok 29 - speech and mobile accessibility contract is present
+  ---
+  duration_ms: 2.471217
+  type: 'test'
+  ...
+# Subtest: general settings cannot configure LLM/provider/prompt values
+ok 30 - general settings cannot configure LLM/provider/prompt values
+  ---
+  duration_ms: 0.927101
+  type: 'test'
+  ...
+# Subtest: A to B migration is deterministic, idempotent, versioned, and removes transient attachment context
+ok 31 - A to B migration is deterministic, idempotent, versioned, and removes transient attachment context
+  ---
+  duration_ms: 2.309173
+  type: 'test'
+  ...
+# Subtest: edit, branch, switch and regenerate retain original branch and avoid duplicating the preceding user turn
+ok 32 - edit, branch, switch and regenerate retain original branch and avoid duplicating the preceding user turn
+  ---
+  duration_ms: 4.106309
+  type: 'test'
+  ...
+# Subtest: generation state rejects invalid transitions and supports terminal retry states
+ok 33 - generation state rejects invalid transitions and supports terminal retry states
+  ---
+  duration_ms: 0.613496
+  type: 'test'
+  ...
+# Subtest: generation manager prevents duplicate sends, cancels deleted chats, ignores stale callbacks, retries and recovers lifecycle interruptions
+ok 34 - generation manager prevents duplicate sends, cancels deleted chats, ignores stale callbacks, retries and recovers lifecycle interruptions
+  ---
+  duration_ms: 0.782657
+  type: 'test'
+  ...
+# Subtest: local organisation search, tags/folders, pin/archive and sort work without provider calls
+ok 35 - local organisation search, tags/folders, pin/archive and sort work without provider calls
+  ---
+  duration_ms: 0.455413
+  type: 'test'
+  ...
+# Subtest: exports use deterministic formats and reject secrets or transient fields on import
+ok 36 - exports use deterministic formats and reject secrets or transient fields on import
+  ---
+  duration_ms: 1.431806
+  type: 'test'
+  ...
+# Subtest: offline queue is persistent-domain safe, idempotent, retryable and cleans completed source turns
+ok 37 - offline queue is persistent-domain safe, idempotent, retryable and cleans completed source turns
+  ---
+  duration_ms: 0.447221
+  type: 'test'
+  ...
+# Subtest: safe markdown keeps code blocks while stripping executable markup and malformed links
+ok 38 - safe markdown keeps code blocks while stripping executable markup and malformed links
+  ---
+  duration_ms: 0.503103
+  type: 'test'
+  ...
+# Subtest: A to B to C migration preserves chats, message ordering, identity and assigns deterministic default workspace
+ok 39 - A to B to C migration preserves chats, message ordering, identity and assigns deterministic default workspace
+  ---
+  duration_ms: 9.653418
+  type: 'test'
+  ...
+# Subtest: workspace CRUD and relationship integrity preserve chats when a workspace is deleted
+ok 40 - workspace CRUD and relationship integrity preserve chats when a workspace is deleted
+  ---
+  duration_ms: 1.046447
+  type: 'test'
+  ...
+# Subtest: Prompt Library administration requires protected access and versions protected edits
+ok 41 - Prompt Library administration requires protected access and versions protected edits
+  ---
+  duration_ms: 1.94172
+  type: 'test'
+  ...
+# Subtest: attachment session supports multi-file add/reorder and persists metadata without transient content
+ok 42 - attachment session supports multi-file add/reorder and persists metadata without transient content
+  ---
+  duration_ms: 0.61576
+  type: 'test'
+  ...
+# Subtest: image and APK uploads enforce format, size and local-only APK context policies
+ok 43 - image and APK uploads enforce format, size and local-only APK context policies
+  ---
+  duration_ms: 0.970825
+  type: 'test'
+  ...
+# Subtest: attachment UX requires explicit selected-provider consent and clearly marks APK files as local-only
+ok 44 - attachment UX requires explicit selected-provider consent and clearly marks APK files as local-only
+  ---
+  duration_ms: 1.343326
+  type: 'test'
+  ...
+# Subtest: PDF pipeline handles unavailable, encrypted, corrupt and bounded valid extraction without fabricating text
+ok 45 - PDF pipeline handles unavailable, encrypted, corrupt and bounded valid extraction without fabricating text
+  ---
+  duration_ms: 0.87266
+  type: 'test'
+  ...
+# Subtest: OCR unavailable path and document context clear/re-entry behavior are explicit
+ok 46 - OCR unavailable path and document context clear/re-entry behavior are explicit
+  ---
+  duration_ms: 0.727024
+  type: 'test'
+  ...
+# Subtest: voice transitions cover permission-ready capture review and invalid state rejection
+ok 47 - voice transitions cover permission-ready capture review and invalid state rejection
+  ---
+  duration_ms: 0.580277
+  type: 'test'
+  ...
+# Subtest: workflow trees preserve roots, child indentation, workflow status and legacy-safe parent behavior
+ok 48 - workflow trees preserve roots, child indentation, workflow status and legacy-safe parent behavior
+  ---
+  duration_ms: 0.972628
+  type: 'test'
+  ...
+# Subtest: large-model output token policy rounds, clamps and exposes a 65,536-token ceiling
+ok 49 - large-model output token policy rounds, clamps and exposes a 65,536-token ceiling
+  ---
+  duration_ms: 0.233045
+  type: 'test'
+  ...
+# Subtest: local PDF formatter escapes visible conversation and excludes hidden request context
+ok 50 - local PDF formatter escapes visible conversation and excludes hidden request context
+  ---
+  duration_ms: 0.739914
+  type: 'test'
+  ...
+# Subtest: premium PDF layouts retain escaping and differentiate compact transcripts
+ok 51 - premium PDF layouts retain escaping and differentiate compact transcripts
+  ---
+  duration_ms: 0.240696
+  type: 'test'
+  ...
+# Subtest: local document ZIP bundles safe current-chat formats with an integrity manifest
+ok 52 - local document ZIP bundles safe current-chat formats with an integrity manifest
+  ---
+  duration_ms: 34.59974
+  type: 'test'
+  ...
+# Subtest: ordinary backup excludes protected/transient data and restore preparation retains a rollback state
+ok 53 - ordinary backup excludes protected/transient data and restore preparation retains a rollback state
+  ---
+  duration_ms: 3.210956
+  type: 'test'
+  ...
+# Subtest: project archive round trip protects secrets/transient context and validates integrity
+ok 54 - project archive round trip protects secrets/transient context and validates integrity
+  ---
+  duration_ms: 34.627341
+  type: 'test'
+  ...
+# Subtest: PBKDF2-HMAC-SHA256 matches a known vector
+ok 55 - PBKDF2-HMAC-SHA256 matches a known vector
+  ---
+  duration_ms: 4.190503
+  type: 'test'
+  ...
+# Subtest: protected PIN is stored as a salted verifier, not literal digits
+ok 56 - protected PIN is stored as a salted verifier, not literal digits
+  ---
+  duration_ms: 57.955682
+  type: 'test'
+  ...
+# Subtest: legacy plaintext PIN records are recognised for one-time migration
+ok 57 - legacy plaintext PIN records are recognised for one-time migration
+  ---
+  duration_ms: 0.223961
+  type: 'test'
+  ...
+# Subtest: transient attachment context is removed from persisted chats
+ok 58 - transient attachment context is removed from persisted chats
+  ---
+  duration_ms: 1.227665
+  type: 'test'
+  ...
+# (node:2773) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///mnt/data/dr_stones_rem002_original/DR_STONES_COMMAND_CENTRE_V1_5_4_PROVISIONAL_CONTINUATION_HANDOVER_26082026124028/src/utils/streamChat.js is not specified and it doesn't parse as CommonJS.
+# Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+# To eliminate this warning, add "type": "module" to /mnt/data/dr_stones_rem002_original/DR_STONES_COMMAND_CENTRE_V1_5_4_PROVISIONAL_CONTINUATION_HANDOVER_26082026124028/package.json.
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: OpenRouter model sync requires its own API key
+ok 59 - OpenRouter model sync requires its own API key
+  ---
+  duration_ms: 1.362314
+  type: 'test'
+  ...
+# Subtest: Together model sync requires its own API key
+ok 60 - Together model sync requires its own API key
+  ---
+  duration_ms: 0.277941
+  type: 'test'
+  ...
+# Subtest: model sync uses current OpenRouter authenticated models endpoint
+ok 61 - model sync uses current OpenRouter authenticated models endpoint
+  ---
+  duration_ms: 1.273072
+  type: 'test'
+  ...
+# Subtest: model sync uses Together authenticated models endpoint and normalises chat models
+ok 62 - model sync uses Together authenticated models endpoint and normalises chat models
+  ---
+  duration_ms: 0.350568
+  type: 'test'
+  ...
+# Subtest: protected settings PIN requires exactly six digits
+ok 63 - protected settings PIN requires exactly six digits
+  ---
+  duration_ms: 1.034519
+  type: 'test'
+  ...
+# Subtest: SSE JSON split across chunks emits exactly once and final tail flushes
+ok 64 - SSE JSON split across chunks emits exactly once and final tail flushes
+  ---
+  duration_ms: 1.675827
+  type: 'test'
+  ...
+# Subtest: speech adapter accepts a complete compatible native module
+ok 65 - speech adapter accepts a complete compatible native module
+  ---
+  duration_ms: 0.758151
+  type: 'test'
+  ...
+# Subtest: speech adapter converts module load failure into an unavailable result
+ok 66 - speech adapter converts module load failure into an unavailable result
+  ---
+  duration_ms: 1.658993
+  type: 'test'
+  ...
+# Subtest: speech adapter rejects incomplete native bindings
+ok 67 - speech adapter rejects incomplete native bindings
+  ---
+  duration_ms: 0.362486
+  type: 'test'
+  ...
+# Subtest: application module loader contains import-time failures as data
+ok 68 - application module loader contains import-time failures as data
+  ---
+  duration_ms: 0.282106
+  type: 'test'
+  ...
+# Subtest: startup recovery boundary is established before App is dynamically loaded
+ok 69 - startup recovery boundary is established before App is dynamically loaded
+  ---
+  duration_ms: 1.158262
+  type: 'test'
+  ...
+# Subtest: navigation effects do not own global stream/speech cleanup
+ok 70 - navigation effects do not own global stream/speech cleanup
+  ---
+  duration_ms: 4.121712
+  type: 'test'
+  ...
+# Subtest: root render failures degrade to a recoverable shell instead of an uncaught blank/crash path
+ok 71 - root render failures degrade to a recoverable shell instead of an uncaught blank/crash path
+  ---
+  duration_ms: 1.365449
+  type: 'test'
+  ...
+# Subtest: optional speech recognition cannot fail during App module import
+ok 72 - optional speech recognition cannot fail during App module import
+  ---
+  duration_ms: 0.396366
+  type: 'test'
+  ...
+# Subtest: startup hydration has recovery and write-protection on failure
+ok 73 - startup hydration has recovery and write-protection on failure
+  ---
+  duration_ms: 0.700836
+  type: 'test'
+  ...
+# Subtest: startup import graph contains no unsupported latin1 TextDecoder and byte mapping is exact
+ok 74 - startup import graph contains no unsupported latin1 TextDecoder and byte mapping is exact
+  ---
+  duration_ms: 11.904335
+  type: 'test'
+  ...
+# Subtest: Android speech package visibility covers modern and legacy Google services
+ok 75 - Android speech package visibility covers modern and legacy Google services
+  ---
+  duration_ms: 0.423426
+  type: 'test'
+  ...
+# Subtest: CI requires executed Android cold-launch gates before an APK artefact can be published
+ok 76 - CI requires executed Android cold-launch gates before an APK artefact can be published
+  ---
+  duration_ms: 0.393662
+  type: 'test'
+  ...
+# Subtest: Android release gate requires positive real-app UI readiness, not process survival alone
+ok 77 - Android release gate requires positive real-app UI readiness, not process survival alone
+  ---
+  duration_ms: 0.403837
+  type: 'test'
+  ...
+# Subtest: app-ready UI classifier rejects both recovery shells and accepts only the real v1.5.4 marker
+ok 78 - app-ready UI classifier rejects both recovery shells and accepts only the real v1.5.4 marker
+  ---
+  duration_ms: 0.238322
+  type: 'test'
+  ...
+# Subtest: publishable APK build command is fail-closed and EAS route is diagnostic-only
+ok 79 - publishable APK build command is fail-closed and EAS route is diagnostic-only
+  ---
+  duration_ms: 0.678973
+  type: 'test'
+  ...
+# Subtest: current release identity is v1.5.4 / versionCode 19 across user-facing build guidance
+ok 80 - current release identity is v1.5.4 / versionCode 19 across user-facing build guidance
+  ---
+  duration_ms: 3.2742
+  type: 'test'
+  ...
+# Subtest: v1.3.2 local PDF extractor inventories pages and preserves page selection order
+ok 81 - v1.3.2 local PDF extractor inventories pages and preserves page selection order
+  ---
+  duration_ms: 2.978983
+  type: 'test'
+  ...
+# Subtest: v1.3.2 PDF operator extraction handles Tj and TJ text operators without fabricating OCR
+ok 82 - v1.3.2 PDF operator extraction handles Tj and TJ text operators without fabricating OCR
+  ---
+  duration_ms: 2.235764
+  type: 'test'
+  ...
+# Subtest: protected prompt export/import preserves enable, favourite and version metadata
+ok 83 - protected prompt export/import preserves enable, favourite and version metadata
+  ---
+  duration_ms: 5.126787
+  type: 'test'
+  ...
+# Subtest: attachment session supports explicit user-visible reordering
+ok 84 - attachment session supports explicit user-visible reordering
+  ---
+  duration_ms: 1.072565
+  type: 'test'
+  ...
+# Subtest: v3 to v4 migration is deterministic/idempotent and creates document collections
+ok 85 - v3 to v4 migration is deterministic/idempotent and creates document collections
+  ---
+  duration_ms: 13.283093
+  type: 'test'
+  ...
+# Subtest: document delete removes revisions and workspace relationships without corrupting active selection
+ok 86 - document delete removes revisions and workspace relationships without corrupting active selection
+  ---
+  duration_ms: 2.265218
+  type: 'test'
+  ...
+# Subtest: chat-to-document placement supports before after replace and append targets
+ok 87 - chat-to-document placement supports before after replace and append targets
+  ---
+  duration_ms: 0.759933
+  type: 'test'
+  ...
+# Subtest: local durable state retains protected project AI configuration while ordinary backup excludes it
+ok 88 - local durable state retains protected project AI configuration while ordinary backup excludes it
+  ---
+  duration_ms: 3.027295
+  type: 'test'
+  ...
+# Subtest: multiple documents stay scoped to workspaces and workspace delete preserves documents
+ok 89 - multiple documents stay scoped to workspaces and workspace delete preserves documents
+  ---
+  duration_ms: 1.227434
+  type: 'test'
+  ...
+# Subtest: structured editing and accessible reorder domain operations are deterministic
+ok 90 - structured editing and accessible reorder domain operations are deterministic
+  ---
+  duration_ms: 0.474221
+  type: 'test'
+  ...
+# Subtest: snapshots compare and restore non-destructively with checkpoint
+ok 91 - snapshots compare and restore non-destructively with checkpoint
+  ---
+  duration_ms: 1.00829
+  type: 'test'
+  ...
+# Subtest: chat-to-document and AI operations consume visible text only
+ok 92 - chat-to-document and AI operations consume visible text only
+  ---
+  duration_ms: 0.929465
+  type: 'test'
+  ...
+# Subtest: render serializers expose composition without hidden metadata
+ok 93 - render serializers expose composition without hidden metadata
+  ---
+  duration_ms: 4.134041
+  type: 'test'
+  ...
+# Subtest: raw ZIP preflight detects raw/normalised duplicates and traversal before JSZip
+ok 94 - raw ZIP preflight detects raw/normalised duplicates and traversal before JSZip
+  ---
+  duration_ms: 6.497563
+  type: 'test'
+  ...
+# Subtest: transactional restore verifies durable commit and verified rollback
+ok 95 - transactional restore verifies durable commit and verified rollback
+  ---
+  duration_ms: 3.352536
+  type: 'test'
+  ...
+# Subtest: autosave status transitions remain explicit and serialisation excludes hidden context
+ok 96 - autosave status transitions remain explicit and serialisation excludes hidden context
+  ---
+  duration_ms: 0.951897
+  type: 'test'
+  ...
+# Subtest: document project import remaps document/revision lineage
+ok 97 - document project import remaps document/revision lineage
+  ---
+  duration_ms: 1.661075
+  type: 'test'
+  ...
+# Subtest: workspace project merge remaps document revision lineage
+ok 98 - workspace project merge remaps document revision lineage
+  ---
+  duration_ms: 4.523175
+  type: 'test'
+  ...
+# Subtest: workspace and document payloads sanitise document/revision metadata
+ok 99 - workspace and document payloads sanitise document/revision metadata
+  ---
+  duration_ms: 12.465384
+  type: 'test'
+  ...
+# Subtest: responsive classifier, Back order and generation presentation are explicit
+ok 100 - responsive classifier, Back order and generation presentation are explicit
+  ---
+  duration_ms: 0.743088
+  type: 'test'
+  ...
+# Subtest: v1.5 Full Voice follows the locked permission → listen → finalise → generate → speak loop
+ok 101 - v1.5 Full Voice follows the locked permission → listen → finalise → generate → speak loop
+  ---
+  duration_ms: 3.239688
+  type: 'test'
+  ...
+# Subtest: permission denial is distinct and can retry permission safely
+ok 102 - permission denial is distinct and can retry permission safely
+  ---
+  duration_ms: 0.271111
+  type: 'test'
+  ...
+# Subtest: STT, generation and TTS failures remain separate recoverable states
+ok 103 - STT, generation and TTS failures remain separate recoverable states
+  ---
+  duration_ms: 1.443113
+  type: 'test'
+  ...
+# Subtest: callback identity rejects stale session, turn, STT and TTS runs
+ok 104 - callback identity rejects stale session, turn, STT and TTS runs
+  ---
+  duration_ms: 0.249328
+  type: 'test'
+  ...
+# Subtest: lifecycle interruption recovers conservatively to STOPPED without auto-listen
+ok 105 - lifecycle interruption recovers conservatively to STOPPED without auto-listen
+  ---
+  duration_ms: 0.253074
+  type: 'test'
+  ...
+# Subtest: TTS sentence segmentation supports restart-from-sentence semantics
+ok 106 - TTS sentence segmentation supports restart-from-sentence semantics
+  ---
+  duration_ms: 0.508612
+  type: 'test'
+  ...
+# Subtest: Auto-send/Auto-listen disabled semantics and repeated voice turns are stable
+ok 107 - Auto-send/Auto-listen disabled semantics and repeated voice turns are stable
+  ---
+  duration_ms: 0.212935
+  type: 'test'
+  ...
+# Subtest: state announcements are concise and invalid transitions remain rejected
+ok 108 - state announcements are concise and invalid transitions remain rejected
+  ---
+  duration_ms: 0.591534
+  type: 'test'
+  ...
+# Subtest: v1.5 workspace archive carries intelligence data and imports tasks paused
+ok 109 - v1.5 workspace archive carries intelligence data and imports tasks paused
+  ---
+  duration_ms: 109.092664
+  type: 'test'
+  ...
+# Subtest: v1.5 skills are versioned reusable workflows
+ok 110 - v1.5 skills are versioned reusable workflows
+  ---
+  duration_ms: 6.89807
+  type: 'test'
+  ...
+# Subtest: v1.5 tasks support persistent schedules and conditions
+ok 111 - v1.5 tasks support persistent schedules and conditions
+  ---
+  duration_ms: 23.110218
+  type: 'test'
+  ...
+# Subtest: v1.5 usage preserves provider cost provenance and estimates only tokens
+ok 112 - v1.5 usage preserves provider cost provenance and estimates only tokens
+  ---
+  duration_ms: 3.921286
+  type: 'test'
+  ...
+# Subtest: voice usage provenance retains VOICE origin and stable session/turn identifiers
+ok 113 - voice usage provenance retains VOICE origin and stable session/turn identifiers
+  ---
+  duration_ms: 0.256349
+  type: 'test'
+  ...
+# Subtest: v1.5 workspace memory is scoped, controllable and ranked
+ok 114 - v1.5 workspace memory is scoped, controllable and ranked
+  ---
+  duration_ms: 2.247542
+  type: 'test'
+  ...
+# Subtest: v1.5.4 chat exposes request-scoped Workspace Memory controls without mutating durable memory
+ok 115 - v1.5.4 chat exposes request-scoped Workspace Memory controls without mutating durable memory
+  ---
+  duration_ms: 1.432898
+  type: 'test'
+  ...
+# Subtest: v1.5.4 persistent global execution banner and header usage affordance remain route-independent
+ok 116 - v1.5.4 persistent global execution banner and header usage affordance remain route-independent
+  ---
+  duration_ms: 0.384859
+  type: 'test'
+  ...
+# Subtest: Skill Builder exposes draft, validation, publication, versioning, ordered steps and import export
+ok 117 - Skill Builder exposes draft, validation, publication, versioning, ordered steps and import export
+  ---
+  duration_ms: 0.904637
+  type: 'test'
+  ...
+# Subtest: Skill executor runs canonical first-class step types and carries Task correlation/version provenance
+ok 118 - Skill executor runs canonical first-class step types and carries Task correlation/version provenance
+  ---
+  duration_ms: 0.367023
+  type: 'test'
+  ...
+# Subtest: Task editor exposes all schedule/condition policies, exact Skill pinning, occurrence preview, catch-up and history
+ok 119 - Task editor exposes all schedule/condition policies, exact Skill pinning, occurrence preview, catch-up and history
+  ---
+  duration_ms: 0.247345
+  type: 'test'
+  ...
+# Subtest: Task notification education precedes Android notification permission request and previews default off
+ok 120 - Task notification education precedes Android notification permission request and previews default off
+  ---
+  duration_ms: 0.313764
+  type: 'test'
+  ...
+# Subtest: Usage UI exposes event detail and Task Skill output correlation identifiers
+ok 121 - Usage UI exposes event detail and Task Skill output correlation identifiers
+  ---
+  duration_ms: 0.279774
+  type: 'test'
+  ...
+# Subtest: v1.5.4 image generation uses dedicated OpenRouter image endpoints and disables provider fallback
+ok 122 - v1.5.4 image generation uses dedicated OpenRouter image endpoints and disables provider fallback
+  ---
+  duration_ms: 2.020847
+  type: 'test'
+  ...
+# Subtest: image response requires actual image bytes before success
+ok 123 - image response requires actual image bytes before success
+  ---
+  duration_ms: 0.442183
+  type: 'test'
+  ...
+# Subtest: local pricing estimates remain explicitly estimated and provider cost wins
+ok 124 - local pricing estimates remain explicitly estimated and provider cost wins
+  ---
+  duration_ms: 2.885605
+  type: 'test'
+  ...
+# Subtest: global and workspace hard budgets block before provider calls when projected spend reaches limit
+ok 125 - global and workspace hard budgets block before provider calls when projected spend reaches limit
+  ---
+  duration_ms: 1.100026
+  type: 'test'
+  ...
+# Subtest: memory management supports filtering, bulk deletion and bounded workspace-only context
+ok 126 - memory management supports filtering, bulk deletion and bounded workspace-only context
+  ---
+  duration_ms: 1.777648
+  type: 'test'
+  ...
+# Subtest: schema 6 migration preserves prior v1.5 domains and initializes merged usage controls
+ok 127 - schema 6 migration preserves prior v1.5 domains and initializes merged usage controls
+  ---
+  duration_ms: 2.28704
+  type: 'test'
+  ...
+# Subtest: speech transcript extraction preserves the last non-empty interim result
+ok 128 - speech transcript extraction preserves the last non-empty interim result
+  ---
+  duration_ms: 0.89259
+  type: 'test'
+  ...
+# Subtest: Android user-stop client error is recoverable only when a transcript is available
+ok 129 - Android user-stop client error is recoverable only when a transcript is available
+  ---
+  duration_ms: 0.224922
+  type: 'test'
+  ...
+# Subtest: App scopes the Android client-error fallback to an explicit manual stop and opens review
+ok 130 - App scopes the Android client-error fallback to an explicit manual stop and opens review
+  ---
+  duration_ms: 0.475553
+  type: 'test'
+  ...
+1..130
+# tests 130
+# suites 0
+# pass 130
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 1062.88495

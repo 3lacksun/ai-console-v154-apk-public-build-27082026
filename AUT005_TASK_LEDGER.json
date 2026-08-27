@@ -1,0 +1,484 @@
+{
+  "schemaVersion": 1,
+  "project": "Dr Stones Command Centre",
+  "runMode": "STANDALONE",
+  "exec002Version": "1.2.0",
+  "baselineSha256": "58fba09b0f2cd12b9332c3ae1dcd8d307010d654848e6f9e32e06dbe66c25996",
+  "createdAt": 1787745098933,
+  "updatedAt": 1787780897535,
+  "tasks": [
+    {
+      "task_id": "TASK-001",
+      "title": "Complete Skill Builder UI and engine wiring",
+      "class": [
+        "MISSING_FEATURE"
+      ],
+      "severity": "HIGH",
+      "sourceCanonicalDefectIds": [],
+      "provisionalFindingIds": [
+        "EXEC-TASK-001"
+      ],
+      "requirements": [
+        "Merged spec \u00a79.1\u20139.4"
+      ],
+      "affectedFiles": [
+        "src/components/IntelligenceHub.js",
+        "App.js"
+      ],
+      "state": "CLOSED",
+      "remediationSummary": "Implemented richer Skill Builder UI, draft/version lifecycle, publish/new-draft/retire/duplicate/import-export, step ordering and canonical step execution wiring.",
+      "testsRequired": [
+        "Static UI capability test",
+        "Skill engine unit/regression tests"
+      ],
+      "testsExecuted": [
+        "node --test tests/v154-completion-surfaces.test.mjs: 7/7 PASS",
+        "node --test: 130/130 PASS",
+        "npm run check: PASS"
+      ],
+      "evidenceReferences": [
+        "/mnt/data/exec002_full_test_restored.log",
+        "/mnt/data/exec002_static_final.log"
+      ],
+      "beforeHashes": {
+        "src/components/IntelligenceHub.js": "f187825a827e246cca7130829f865fcd3dc7e4b3e20d3af04f2037b0881b2932",
+        "App.js": "f1d43a6deca7a20919b94e870244c6d05bcdd4e190b7632721fe773166a82e68"
+      },
+      "afterHashes": {
+        "src/components/IntelligenceHub.js": "0a4efd37c2b1fab9cb990465be7b1ada2b85c2e41f5c06e29ddd37f188c425e6",
+        "App.js": "59ef0f8d5b66eb1a5c1d40f9ddce8227d9edda73e6987abf2fa703817d461494"
+      },
+      "dependencies": [],
+      "externalBlockers": [],
+      "evidenceInvalidationKeys": [
+        "Merged spec \u00a79.1\u20139.4"
+      ],
+      "documentationProjectStateImpact": [
+        "merged specification compliance evidence"
+      ],
+      "closureTimestamp": 1787745934629
+    },
+    {
+      "task_id": "TASK-002",
+      "title": "Complete scheduled/conditional Task editor and management UI",
+      "class": [
+        "MISSING_FEATURE"
+      ],
+      "severity": "HIGH",
+      "sourceCanonicalDefectIds": [],
+      "provisionalFindingIds": [
+        "EXEC-TASK-002"
+      ],
+      "requirements": [
+        "Merged spec \u00a710.1\u201310.5"
+      ],
+      "affectedFiles": [
+        "src/components/IntelligenceHub.js",
+        "App.js"
+      ],
+      "state": "CLOSED",
+      "remediationSummary": "Implemented Task editor and management for once/daily/weekly/interval/condition triggers, condition policies, exact Skill version pinning, preview, catch-up, run-now, pause/resume, duplicate/delete and run history.",
+      "testsRequired": [
+        "Static UI capability test",
+        "Task scheduler tests"
+      ],
+      "testsExecuted": [
+        "node --test tests/v154-completion-surfaces.test.mjs: 7/7 PASS",
+        "node --test: 130/130 PASS",
+        "npm run check: PASS"
+      ],
+      "evidenceReferences": [
+        "/mnt/data/exec002_full_test_restored.log",
+        "/mnt/data/exec002_static_final.log"
+      ],
+      "beforeHashes": {
+        "src/components/IntelligenceHub.js": "f187825a827e246cca7130829f865fcd3dc7e4b3e20d3af04f2037b0881b2932",
+        "App.js": "f1d43a6deca7a20919b94e870244c6d05bcdd4e190b7632721fe773166a82e68"
+      },
+      "afterHashes": {
+        "src/components/IntelligenceHub.js": "0a4efd37c2b1fab9cb990465be7b1ada2b85c2e41f5c06e29ddd37f188c425e6",
+        "App.js": "59ef0f8d5b66eb1a5c1d40f9ddce8227d9edda73e6987abf2fa703817d461494"
+      },
+      "dependencies": [],
+      "externalBlockers": [],
+      "evidenceInvalidationKeys": [
+        "Merged spec \u00a710.1\u201310.5"
+      ],
+      "documentationProjectStateImpact": [
+        "merged specification compliance evidence"
+      ],
+      "closureTimestamp": 1787745934629
+    },
+    {
+      "task_id": "TASK-003",
+      "title": "Add per-request Workspace Memory controls",
+      "class": [
+        "MISSING_FEATURE"
+      ],
+      "severity": "HIGH",
+      "sourceCanonicalDefectIds": [],
+      "provisionalFindingIds": [
+        "EXEC-TASK-003"
+      ],
+      "requirements": [
+        "Merged spec \u00a78.4"
+      ],
+      "affectedFiles": [
+        "App.js"
+      ],
+      "state": "CLOSED",
+      "remediationSummary": "Implemented request-scoped Workspace Memory selection count, budget/selection explanation, exclusion/reselection and one-request Memory-off without mutating durable memory.",
+      "testsRequired": [
+        "Memory selection unit/regression test",
+        "Static UI capability test"
+      ],
+      "testsExecuted": [
+        "node --test tests/v154-completion-surfaces.test.mjs: 7/7 PASS",
+        "node --test: 130/130 PASS",
+        "npm run check: PASS"
+      ],
+      "evidenceReferences": [
+        "/mnt/data/exec002_full_test_restored.log",
+        "/mnt/data/exec002_static_final.log"
+      ],
+      "beforeHashes": {
+        "App.js": "f1d43a6deca7a20919b94e870244c6d05bcdd4e190b7632721fe773166a82e68"
+      },
+      "afterHashes": {
+        "App.js": "59ef0f8d5b66eb1a5c1d40f9ddce8227d9edda73e6987abf2fa703817d461494"
+      },
+      "dependencies": [],
+      "externalBlockers": [],
+      "evidenceInvalidationKeys": [
+        "Merged spec \u00a78.4"
+      ],
+      "documentationProjectStateImpact": [
+        "merged specification compliance evidence"
+      ],
+      "closureTimestamp": 1787745934629
+    },
+    {
+      "task_id": "TASK-004",
+      "title": "Add persistent global execution-status banner and header affordances",
+      "class": [
+        "UI_UX"
+      ],
+      "severity": "MEDIUM",
+      "sourceCanonicalDefectIds": [],
+      "provisionalFindingIds": [
+        "EXEC-TASK-004"
+      ],
+      "requirements": [
+        "Merged spec \u00a73.3"
+      ],
+      "affectedFiles": [
+        "App.js"
+      ],
+      "state": "CLOSED",
+      "remediationSummary": "Implemented persistent global execution status plus active workspace/provider/model and usage affordances in the header.",
+      "testsRequired": [
+        "Static UI capability test"
+      ],
+      "testsExecuted": [
+        "node --test tests/v154-completion-surfaces.test.mjs: 7/7 PASS",
+        "node --test: 130/130 PASS",
+        "npm run check: PASS"
+      ],
+      "evidenceReferences": [
+        "/mnt/data/exec002_full_test_restored.log",
+        "/mnt/data/exec002_static_final.log"
+      ],
+      "beforeHashes": {
+        "App.js": "f1d43a6deca7a20919b94e870244c6d05bcdd4e190b7632721fe773166a82e68"
+      },
+      "afterHashes": {
+        "App.js": "59ef0f8d5b66eb1a5c1d40f9ddce8227d9edda73e6987abf2fa703817d461494"
+      },
+      "dependencies": [],
+      "externalBlockers": [],
+      "evidenceInvalidationKeys": [
+        "Merged spec \u00a73.3"
+      ],
+      "documentationProjectStateImpact": [
+        "merged specification compliance evidence"
+      ],
+      "closureTimestamp": 1787745934629
+    },
+    {
+      "task_id": "TASK-005",
+      "title": "Add Usage event detail and correlation navigation",
+      "class": [
+        "MISSING_FEATURE"
+      ],
+      "severity": "MEDIUM",
+      "sourceCanonicalDefectIds": [],
+      "provisionalFindingIds": [
+        "EXEC-TASK-005"
+      ],
+      "requirements": [
+        "Merged spec \u00a711.2",
+        "Merged spec \u00a723"
+      ],
+      "affectedFiles": [
+        "src/components/IntelligenceHub.js"
+      ],
+      "state": "CLOSED",
+      "remediationSummary": "Implemented Usage event detail and correlation fields/navigation evidence spanning Task, Skill, chat/output references.",
+      "testsRequired": [
+        "Usage UI capability test"
+      ],
+      "testsExecuted": [
+        "node --test tests/v154-completion-surfaces.test.mjs: 7/7 PASS",
+        "node --test: 130/130 PASS",
+        "npm run check: PASS"
+      ],
+      "evidenceReferences": [
+        "/mnt/data/exec002_full_test_restored.log",
+        "/mnt/data/exec002_static_final.log"
+      ],
+      "beforeHashes": {
+        "src/components/IntelligenceHub.js": "f187825a827e246cca7130829f865fcd3dc7e4b3e20d3af04f2037b0881b2932"
+      },
+      "afterHashes": {
+        "src/components/IntelligenceHub.js": "0a4efd37c2b1fab9cb990465be7b1ada2b85c2e41f5c06e29ddd37f188c425e6"
+      },
+      "dependencies": [],
+      "externalBlockers": [],
+      "evidenceInvalidationKeys": [
+        "Merged spec \u00a711.2",
+        "Merged spec \u00a723"
+      ],
+      "documentationProjectStateImpact": [
+        "merged specification compliance evidence"
+      ],
+      "closureTimestamp": 1787745934629
+    },
+    {
+      "task_id": "TASK-006",
+      "title": "Add Task notification education and Android permission integration",
+      "class": [
+        "MISSING_FEATURE"
+      ],
+      "severity": "MEDIUM",
+      "sourceCanonicalDefectIds": [],
+      "provisionalFindingIds": [
+        "EXEC-TASK-006"
+      ],
+      "requirements": [
+        "Merged spec \u00a710.5"
+      ],
+      "affectedFiles": [
+        "src/components/IntelligenceHub.js",
+        "App.js",
+        "app.json"
+      ],
+      "state": "CLOSED",
+      "remediationSummary": "Implemented notification education before Android POST_NOTIFICATIONS permission request and kept generated notification preview disabled by default.",
+      "testsRequired": [
+        "Static UI capability test"
+      ],
+      "testsExecuted": [
+        "node --test tests/v154-completion-surfaces.test.mjs: 7/7 PASS",
+        "node --test: 130/130 PASS",
+        "npm run check: PASS"
+      ],
+      "evidenceReferences": [
+        "/mnt/data/exec002_full_test_restored.log",
+        "/mnt/data/exec002_static_final.log"
+      ],
+      "beforeHashes": {
+        "src/components/IntelligenceHub.js": "f187825a827e246cca7130829f865fcd3dc7e4b3e20d3af04f2037b0881b2932",
+        "App.js": "f1d43a6deca7a20919b94e870244c6d05bcdd4e190b7632721fe773166a82e68",
+        "app.json": "1d9d7cfb0323d0f2c5d9cd46981fc0d29ca5f0a7b9ada658236bad493886392c"
+      },
+      "afterHashes": {
+        "src/components/IntelligenceHub.js": "0a4efd37c2b1fab9cb990465be7b1ada2b85c2e41f5c06e29ddd37f188c425e6",
+        "App.js": "59ef0f8d5b66eb1a5c1d40f9ddce8227d9edda73e6987abf2fa703817d461494",
+        "app.json": "1d9d7cfb0323d0f2c5d9cd46981fc0d29ca5f0a7b9ada658236bad493886392c"
+      },
+      "dependencies": [],
+      "externalBlockers": [],
+      "evidenceInvalidationKeys": [
+        "Merged spec \u00a710.5"
+      ],
+      "documentationProjectStateImpact": [
+        "merged specification compliance evidence"
+      ],
+      "closureTimestamp": 1787745934629
+    },
+    {
+      "task_id": "TASK-007",
+      "title": "Restore exact JSZip dependency and close archive-dependent verification",
+      "class": [
+        "TEST_GAP"
+      ],
+      "severity": "HIGH",
+      "sourceCanonicalDefectIds": [],
+      "provisionalFindingIds": [
+        "EXEC-TASK-007"
+      ],
+      "requirements": [
+        "package-lock exact jszip 3.10.1",
+        "EXEC002 dependency policy"
+      ],
+      "affectedFiles": [
+        "package-lock.json",
+        "node_modules (environment only)"
+      ],
+      "state": "CLOSED",
+      "remediationSummary": "Restored exact JSZip 3.10.1 dependency from an already-installed local toolchain source after Library and registry routes were unavailable; archive and full regression verification pass.",
+      "testsRequired": [
+        "npm test",
+        "archive tests"
+      ],
+      "testsExecuted": [
+        "node --test tests/packageC.test.mjs: 16/16 PASS",
+        "node --test: 130/130 PASS"
+      ],
+      "evidenceReferences": [
+        "/mnt/data/exec002_full_test_restored.log",
+        "/mnt/data/exec002_static_final.log"
+      ],
+      "beforeHashes": {},
+      "afterHashes": {
+        "package-lock.json": "e0e6e8e665224a22bedd951ef67f9348f772cabc7879e6d3244d7aba7318155b"
+      },
+      "dependencies": [],
+      "externalBlockers": [],
+      "evidenceInvalidationKeys": [
+        "package-lock exact jszip 3.10.1",
+        "EXEC002 dependency policy"
+      ],
+      "documentationProjectStateImpact": [
+        "handover verification"
+      ],
+      "closureTimestamp": 1787745934629
+    },
+    {
+      "task_id": "TASK-008",
+      "title": "Repair stale v1.5.3 APK identity assertion in v1.5.4 Android CI",
+      "class": [
+        "CI_RELEASE_GATE"
+      ],
+      "severity": "HIGH",
+      "sourceCanonicalDefectIds": [
+        "DSCC-V154-CI-001"
+      ],
+      "provisionalFindingIds": [
+        "REM002-R1-001"
+      ],
+      "requirements": [
+        "v1.5.4 release identity",
+        "Android workflow exact-package acceptance"
+      ],
+      "affectedFiles": [
+        ".github/workflows/android-apk.yml",
+        "scripts/static-check.mjs",
+        "tests/startupRuntimeResilience.test.mjs"
+      ],
+      "state": "CLOSED",
+      "remediationSummary": "Changed APK manifest acceptance from versionName='1.5.3' to '1.5.4' and added static/deterministic anti-regression assertions.",
+      "testsRequired": [
+        "CI workflow static identity check",
+        "full deterministic regression"
+      ],
+      "testsExecuted": [
+        "node scripts/static-check.mjs: PASS",
+        "node scripts/ci-version-guard.mjs: PASS",
+        "node scripts/verify-runtime-contract.mjs: PASS",
+        "node --test tests/*.test.mjs: 131/131 PASS, 0 fail, 0 skip"
+      ],
+      "evidenceReferences": [
+        "rem002-evidence-r1/full-tests-after-ci-identity-fix.log"
+      ],
+      "beforeHashes": {
+        ".github/workflows/android-apk.yml": "9a217ca7adf141129469c920a1cfd77987bda6d02fec09ebda059a77bd8e0cca"
+      },
+      "afterHashes": {
+        ".github/workflows/android-apk.yml": "d5cb01fea25d1c7e565d6853a0aa91ba0fcc6ac0a61c18ce6792b0623f507d7b"
+      },
+      "dependencies": [],
+      "externalBlockers": [],
+      "evidenceInvalidationKeys": [
+        "Android APK release identity"
+      ],
+      "documentationProjectStateImpact": [
+        "release qualification workflow"
+      ],
+      "closureTimestamp": 1787780831906
+    },
+    {
+      "task_id": "TASK-009",
+      "title": "Reconcile stale current-facing checksum and inventory artefacts",
+      "class": [
+        "PACKAGE_INTEGRITY"
+      ],
+      "severity": "MEDIUM",
+      "sourceCanonicalDefectIds": [
+        "DSCC-V154-PKG-001"
+      ],
+      "provisionalFindingIds": [
+        "REM002-R1-002"
+      ],
+      "requirements": [
+        "HAND-003/004",
+        "ART-011/012",
+        "truthful independently verifiable handover"
+      ],
+      "affectedFiles": [
+        "HANDOVER_SHA256SUMS.txt",
+        "SHA256SUMS_EXEC002.txt",
+        "FILE_INVENTORY.txt",
+        "FILE_INVENTORY_EXEC002.txt",
+        "HANDOVER_FILE_INVENTORY.txt",
+        "EXEC002_SOURCE_INVENTORY.json",
+        "EXEC002_CANDIDATE_INVENTORY.json",
+        "scripts/static-check.mjs",
+        "tests/exec002Remediation.test.mjs"
+      ],
+      "state": "CLOSED",
+      "remediationSummary": "Regenerated current-facing inventories/checksums from final candidate bytes, preserved the predecessor package manifest under historical-integrity, and added executable checksum validation.",
+      "testsRequired": [
+        "clean checksum verification",
+        "full deterministic regression",
+        "clean-package verification"
+      ],
+      "testsExecuted": [
+        "pristine predecessor HANDOVER_SHA256SUMS: FAIL (94 missing, 2 mismatched)",
+        "pristine predecessor SHA256SUMS_EXEC002: FAIL (94 missing, 24 mismatched)",
+        "successor checksum manifests: PASS",
+        "node --test tests/*.test.mjs: 131/131 PASS including executable integrity regression"
+      ],
+      "evidenceReferences": [
+        "REM002_R1_EXECUTION_REPORT_26082026224347.md"
+      ],
+      "beforeHashes": {},
+      "afterHashes": {},
+      "dependencies": [],
+      "externalBlockers": [],
+      "evidenceInvalidationKeys": [
+        "package checksum manifests"
+      ],
+      "documentationProjectStateImpact": [
+        "integrity evidence",
+        "handover verification"
+      ],
+      "closureTimestamp": 1787780831906
+    }
+  ],
+  "localActionableTasksOpen": 0,
+  "verification": {
+    "static": "PASS",
+    "deterministic": {
+      "pass": 130,
+      "fail": 0,
+      "skip": 0
+    },
+    "ciVersionGuard": "PASS",
+    "runtimeContract": "PASS",
+    "apkBuild": "EXTERNAL_BLOCKED",
+    "provider": "UNVERIFIABLE",
+    "androidDevice": "UNVERIFIABLE",
+    "rem002R1": "PASS_LOCAL_CONVERGENCE_131_TESTS; external Android/provider/device gates remain open"
+  }
+}

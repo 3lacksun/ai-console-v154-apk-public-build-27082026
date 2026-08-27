@@ -1,0 +1,27 @@
+{
+  "project_name": "Dr Stones Command Centre",
+  "package_version": "1.5.4-rem002-r5-provisional-successor",
+  "authoritative_release_baseline": "v1.5.3 Dual Provider",
+  "working_source_classification": "PROVISIONAL_NON_AUTHORITATIVE_PRODUCTION_CANDIDATE",
+  "selected_working_baseline_filename": "DR_STONES_COMMAND_CENTRE_V1_5_4_REM002_R4_MASTER_AUTHORITY_RECONCILED_PROVISIONAL_HANDOVER_27082026032806.zip",
+  "selected_working_baseline_sha256": "686cfc698e0ebafca8d868fac6f23894635c3a15680edb4754c99fd354f18175",
+  "original_v154_lineage_filename": "DR_STONES_COMMAND_CENTRE_V1_5_4_LOCAL_REMEDIATION_PROVISIONAL_HANDOVER_26082026130837.zip",
+  "original_v154_lineage_sha256": "d57bf2fcf4a21d31df7f7e7638acb87b4f7edd497ed966605a4848400c01ba7d",
+  "production_authoritative_handover": "DR_STONES_COMMAND_CENTRE_V1_5_3_DUAL_PROVIDER_HANDOVER_26082026103314.zip",
+  "production_authoritative_sha256": "69d93cdacb66343e5c99ca9ac4d7b9adb6d7fc88faa1865969d1f092aad1c039",
+  "detected_architecture": "Expo / React Native Android-first application",
+  "specification_sources": [
+    "docs/DR_STONES_COMMAND_CENTRE_VNEXT_MASTER_MERGED_FEATURE_SPECIFICATION_26082026115215.md",
+    "docs/DR_STONES_COMMAND_CENTRE_V1_5_3_DUAL_PROVIDER_FEATURE_LOCK.md",
+    "docs/DR_STONES_COMMAND_CENTRE_V1_5_0_FULL_VOICE_MODE_FEATURE_LOCK.md"
+  ],
+  "master_rules_version": "1.2.13",
+  "master_revision": "20260823-01",
+  "master_authority_identity": "CANONICAL_MASTER_DOCUMENTS_LIVE_RAW_READ_PASS",
+  "master_full_raw_reread_this_run": "PASS_927_LINES_SHA256_VERIFIED",
+  "rem002_version": "1.4.0",
+  "rem002_run": "R4",
+  "local_actionable_tasks_open": 0,
+  "candidate_handover_filename": "DR_STONES_COMMAND_CENTRE_V1_5_4_REM002_R4_MASTER_AUTHORITY_RECONCILED_PROVISIONAL_HANDOVER_27082026032806.zip",
+  "lock_timestamp": "2026-08-27T03:28:06+01:00"
+}
