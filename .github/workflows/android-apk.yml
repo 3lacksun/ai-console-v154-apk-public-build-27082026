@@ -12,10 +12,15 @@ on:
           - preview
           - production
       run_emulator_checks:
-        description: "Run Android 16/API 36 cold-launch plus the dedicated 16-KB page-size/process-survival gates. Disable only for build diagnostics; APK artefacts are not published when disabled."
+        description: "Run Android 16/API 36 cold-launch plus the dedicated 16-KB page-size/process-survival gates. Disable only for build diagnostics; APK artefacts are not published when disabled unless the separately labelled diagnostic artifact option is explicitly selected."
         type: boolean
         required: true
         default: true
+      publish_diagnostic_artifact:
+        description: "Publish a clearly labelled debug APK only when runtime emulator checks are disabled. This is not release acceptance evidence."
+        type: boolean
+        required: true
+        default: false
   push:
     branches: [ main ]
   pull_request:
@@ -37,6 +42,8 @@ env:
   SIGNING_MODE: ${{ inputs.signing_mode || 'preview' }}
   RUN_EMULATOR_CHECKS: ${{ github.event_name != 'workflow_dispatch' || inputs.run_emulator_checks }}
   PREVIEW_APK_NAME: "AI_Console_v1.5.4_preview-debug-signed.apk"
+  DIAGNOSTIC_PREVIEW_APK_NAME: "AI_Console_v1.5.4_preview-debug-signed-diagnostic.apk"
+  PUBLISH_DIAGNOSTIC_ARTIFACT: ${{ inputs.publish_diagnostic_artifact || 'false' }}
   PRODUCTION_APK_NAME: "AI_Console_v1.5.4_production-release-signed.apk"
   DIAGNOSTICS_DIR: "ci-diagnostics"
 
@@ -233,7 +240,11 @@ jobs:
             LABELLED_APK="$PRODUCTION_APK_NAME"
           else
             APK="android/app/build/outputs/apk/debug/app-debug.apk"
-            LABELLED_APK="$PREVIEW_APK_NAME"
+            if [[ "$RUN_EMULATOR_CHECKS" == "true" ]]; then
+              LABELLED_APK="$PREVIEW_APK_NAME"
+            else
+              LABELLED_APK="$DIAGNOSTIC_PREVIEW_APK_NAME"
+            fi
           fi
           test -f "$APK" || { echo "Expected APK not found at $APK" >&2; exit 1; }
           cp "$APK" "$LABELLED_APK"
@@ -535,12 +546,13 @@ jobs:
           if [[ -n "${APK_PATH:-}" && -f "$APK_PATH" ]]; then sha256sum "$APK_PATH" | tee "$DIAGNOSTICS_DIR/apk-sha256.txt"; fi
 
       - name: Upload APK artefact
-        if: ${{ success() && env.RUN_EMULATOR_CHECKS == 'true' }}
+        if: ${{ success() && (env.RUN_EMULATOR_CHECKS == 'true' || env.PUBLISH_DIAGNOSTIC_ARTIFACT == 'true') }}
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
-          name: ${{ env.SIGNING_MODE == 'production' && 'AI_Console_v1.5.4_production-release-signed' || 'AI_Console_v1.5.4_preview-debug-signed' }}
+          name: ${{ env.SIGNING_MODE == 'production' && 'AI_Console_v1.5.4_production-release-signed' || (env.RUN_EMULATOR_CHECKS == 'true' && 'AI_Console_v1.5.4_preview-debug-signed' || 'AI_Console_v1.5.4_preview-debug-signed-diagnostic') }}
           path: |
             ${{ env.PREVIEW_APK_NAME }}
+            ${{ env.DIAGNOSTIC_PREVIEW_APK_NAME }}
             ${{ env.PRODUCTION_APK_NAME }}
           if-no-files-found: warn
           retention-days: 30

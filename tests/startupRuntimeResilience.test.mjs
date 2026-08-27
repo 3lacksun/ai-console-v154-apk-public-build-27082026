@@ -71,7 +71,8 @@ test('CI requires executed Android cold-launch gates before an APK artefact can 
   assert.match(workflow, /default:\s*true/);
   assert.match(workflow, /github\.event_name != 'workflow_dispatch' \|\| inputs\.run_emulator_checks/);
   assert.match(workflow, /name:\s*Release runtime acceptance gate[\s\S]*grep -Fx 'ANDROID_16_PROCESS_SURVIVAL=PASS'[\s\S]*grep -Fx 'ANDROID_16K_PROCESS_SURVIVAL=PASS'/);
-  assert.match(workflow, /name:\s*Upload APK artefact[\s\S]*if:\s*\$\{\{ success\(\) && env\.RUN_EMULATOR_CHECKS == 'true' \}\}/);
+  assert.match(workflow, /publish_diagnostic_artifact[\s\S]*Publish a clearly labelled debug APK only when runtime emulator checks are disabled\. This is not release acceptance evidence\./);
+  assert.match(workflow, /name:\s*Upload APK artefact[\s\S]*if:\s*\$\{\{ success\(\) && \(env\.RUN_EMULATOR_CHECKS == 'true' \|\| env\.PUBLISH_DIAGNOSTIC_ARTIFACT == 'true'\) \}\}/);
   assert.match(workflow, /runs-on: ubuntu-24\.04/);
   assert.match(workflow, /npm audit --omit=dev --audit-level=high/);
   assert.match(workflow, /expo-doctor@1\.20\.2/);
