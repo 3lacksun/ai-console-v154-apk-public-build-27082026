@@ -1,6 +1,5 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { PIN_THROTTLE_POLICY, normalisePinThrottle, pinThrottleRemainingMs, recordPinFailure, resetPinThrottle } from '../src/security/pinThrottle.mjs';
 import { QueueStatus, cancelTurn, createQueuedTurn, recoverInterruptedTurns, retryTurn } from '../src/domain/offlineQueue.mjs';
 import { createChat, createMessage, removeMessage } from '../src/domain/conversationSchema.mjs';
 import { normaliseCState } from '../src/workspaces/workspaceSchema.mjs';
@@ -10,15 +9,6 @@ import fs from 'node:fs';
 import crypto from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-
-test('PIN throttle locks after five failures and resets after expiry', () => {
-  let state = resetPinThrottle();
-  const now = 1_000;
-  for (let i = 0; i < PIN_THROTTLE_POLICY.maxFailures; i += 1) state = recordPinFailure(state, now + i);
-  assert.ok(state.lockedUntil > now);
-  assert.ok(pinThrottleRemainingMs(state, now + 10) > 0);
-  assert.deepEqual(normalisePinThrottle(state, state.lockedUntil + 1), { failures: 0, lockedUntil: 0 });
-});
 
 test('cancelled offline turns can be explicitly retried and interrupted sends recover as failed', () => {
   const turn = createQueuedTurn({ chatId: 'chat-1', messageId: 'draft-1', content: 'hello', now: 1 });

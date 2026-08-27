@@ -13,7 +13,7 @@
     "android": {
       "package": "com.nexarenew.aiconsole",
       "softwareKeyboardLayoutMode": "resize",
-      "versionCode": 19,
+      "versionCode": 20,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#f8fafc"
@@ -48,6 +48,12 @@
         }
       ],
       "expo-secure-store",
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Allow Dr Stones Command Centre to use device biometrics to unlock this app."
+        }
+      ],
       "expo-sharing",
       "expo-status-bar",
       "./plugins/withAndroidSplashLintTargetApi",

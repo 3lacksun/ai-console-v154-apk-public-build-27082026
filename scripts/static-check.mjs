@@ -40,15 +40,19 @@ assert(pkg.scripts?.['code-dump:verify']==='node scripts/code-dump-integrity.mjs
 assert(fs.existsSync(path.join(root,'tests/codeDumpIntegrity.test.mjs')),'code-dump integrity regression tests missing');
 
 
-const workflow=readIf('.github/workflows/android-apk.yml') || readIf('../.github/workflows/android-apk.yml'),readme=read('README.md'),workspace=read('src/workspaces/workspaceSchema.mjs'),backup=read('src/backup/backupService.mjs'),storage=read('src/utils/storage.js'),project=read('src/export/projectArchive.mjs'),docProject=read('src/documents/documentProjectArchive.mjs'),docStudio=read('src/components/DocumentStudio.js'),docTarget=read('src/components/DocumentTargetSheet.js'),protectedTools=read('src/components/ProtectedWorkspaceTools.js'),bubble=read('src/components/MessageBubble.js'),messageActions=read('src/components/MessageActionSheet.js'),primitives=read('src/ui/primitives.js'),responsive=read('src/ui/responsive.mjs'),settings=read('src/components/SettingsSheet.js'),protectedSettings=read('src/components/LLMSettingsSheet.js');
+const workflow=readIf('.github/workflows/android-apk.yml') || readIf('../.github/workflows/android-apk.yml'),readme=read('README.md'),workspace=read('src/workspaces/workspaceSchema.mjs'),backup=read('src/backup/backupService.mjs'),storage=read('src/utils/storage.js'),project=read('src/export/projectArchive.mjs'),docProject=read('src/documents/documentProjectArchive.mjs'),docStudio=read('src/components/DocumentStudio.js'),docTarget=read('src/components/DocumentTargetSheet.js'),protectedTools=read('src/components/ProtectedWorkspaceTools.js'),bubble=read('src/components/MessageBubble.js'),messageActions=read('src/components/MessageActionSheet.js'),primitives=read('src/ui/primitives.js'),responsive=read('src/ui/responsive.mjs'),settings=read('src/components/SettingsSheet.js'),protectedSettings=read('src/components/LLMSettingsSheet.js'),appLock=read('src/security/appLock.mjs'),deviceLock=read('src/components/DeviceLockScreen.js');
 assert(pkg.version==='1.5.4'&&lock.version==='1.5.4'&&lock.packages[''].version==='1.5.4','v1.5.4 package identity drift');
-assert(app.expo.version==='1.5.4'&&app.expo.android.versionCode===19&&app.expo.android.package==='com.nexarenew.aiconsole','Expo/Android release identity drift');
+assert(app.expo.version==='1.5.4'&&app.expo.android.versionCode===20&&app.expo.android.package==='com.nexarenew.aiconsole','Expo/Android release identity drift');
 assert(app.expo.orientation==='default'&&app.expo.android.softwareKeyboardLayoutMode==='resize','adaptive orientation/IME contract missing');
 assert(app.expo.userInterfaceStyle==='light'&&app.expo.backgroundColor==='#f8fafc','light-only app appearance contract missing');
 assert(fs.existsSync(path.join(root,'.htaccess')),'.htaccess missing');
 assert(readme.includes('AI Console v1.5.4')&&readme.includes('Document Studio Pro'),'README identity stale');
 assert(workspace.includes('STORAGE_SCHEMA_VERSION_C = 6')&&workspace.includes('documentRevisions')&&workspace.includes('activeDocumentId')&&workspace.includes('usageLedger')&&workspace.includes('scheduledTasks'),'schema v6 merged intelligence state missing');
 assert(storage.includes('SAVED_SECURELY')&&storage.includes('SESSION_ONLY')&&storage.includes('getApiKeyResult')&&storage.includes('READ_FAILED')&&storage.includes('persistAndVerifyVersionedAppState'),'SecureStore/durable state result contract missing');
+assert(pkg.dependencies?.['expo-local-authentication']==='~57.0.2'&&app.expo.plugins?.some((entry)=>Array.isArray(entry)&&entry[0]==='expo-local-authentication'),'Expo local-authentication native dependency/configuration missing');
+assert(appLock.includes('APP_LOCK_TIMEOUT_MS = 6 * 60 * 60 * 1000')&&appLock.includes('isAppLockDue')&&appLock.includes('disableAppLock'),'six-hour optional device-lock policy missing');
+assert(deviceLock.includes('Unlock with your device')&&deviceLock.includes('This app relocks after six hours')&&!deviceLock.includes('TextInput'),'device-lock screen must be PIN-free');
+assert(source.includes('LocalAuthentication.authenticateAsync')&&source.includes('disableDeviceFallback: false')&&source.includes('<DeviceLockScreen')&&source.includes('getAppLockSettings')&&source.includes('setAppLockSettings'),'device authentication/lock state is not wired into app startup');
 assert(backup.includes('commitPreparedRestore')&&backup.includes('Rollback read-back verification failed'),'transactional restore verification missing');
 assert(project.includes('rawZipPreflight')&&project.includes("import('jszip')")&&project.includes('documentRevisions')&&project.includes('PROJECT_ARCHIVE_SCHEMA_VERSION = 3')&&project.includes('IMPORTED_PAUSED'),'workspace archive v3/intelligence contract missing');
 
@@ -56,7 +60,7 @@ const intelligence=read('src/components/IntelligenceHub.js'),streamChat=read('sr
 const providerRegistry=read('src/providers/providerRegistry.mjs');
 assert(providerRegistry.includes("OPENROUTER: 'openrouter'")&&providerRegistry.includes("TOGETHER: 'together'")&&providerRegistry.includes('https://api.together.ai/v1/chat/completions')&&providerRegistry.includes('https://api.together.ai/v1/models'),'dual-provider registry contract missing');
 assert(storage.includes('togetherApiKey')&&storage.includes('getTogetherApiKeyResult')&&storage.includes('setTogetherApiKey'),'Together SecureStore contract missing');
-assert(protectedSettings.includes('Together AI API Key')&&protectedSettings.includes('never falls back to the other provider automatically'),'dual-provider protected-settings contract missing');
+assert(protectedSettings.includes('Together AI API Key')&&protectedSettings.includes('never falls back to the other provider automatically')&&protectedSettings.includes('Device biometric / screen-lock gate')&&protectedSettings.includes('appLockEnabled'),'dual-provider/device-lock protected-settings contract missing');
 assert(source.includes('activeProvider')&&source.includes('activeApiKey')&&source.includes('providerModelGroups')&&source.includes('togetherApiKey'),'dual-provider App wiring missing');
 for(const label of ['Memory','Skills','Usage','Tasks','Voice']) assert(intelligence.includes(label),`Command Intelligence surface missing: ${label}`);
 assert(memory.includes('buildWorkspaceMemoryContext')&&memory.includes('workspaceId')&&memory.includes('pinned'),'Workspace Memory contract missing');
@@ -126,9 +130,10 @@ const forbiddenFiles=[]; const walk=(dir)=>{for(const e of fs.readdirSync(dir,{w
 const voiceFallback=read('src/voice/manualStopFallback.mjs');
 assert(source.includes('voiceManualStopRef.current = true')&&source.includes('isRecoverableAndroidManualStopError')&&voiceFallback.includes("platform !== 'android'")&&voiceFallback.includes("event?.error === 'client'")&&voiceFallback.includes('Number(event?.code) === 5'),'Android speech manual-stop transcript preservation contract missing');
 
-const queue=read('src/domain/offlineQueue.mjs'),conversation=read('src/domain/conversationSchema.mjs'),rawZip=read('src/utils/rawZipPreflight.mjs'),pinThrottle=read('src/security/pinThrottle.mjs');
+const queue=read('src/domain/offlineQueue.mjs'),conversation=read('src/domain/conversationSchema.mjs'),rawZip=read('src/utils/rawZipPreflight.mjs');
 assert(app.expo.android.blockedPermissions?.includes('android.permission.SYSTEM_ALERT_WINDOW'),'unnecessary SYSTEM_ALERT_WINDOW permission is not blocked');
-assert(pinThrottle.includes('maxFailures: 5')&&pinThrottle.includes('lockMs: 5 * 60 * 1000')&&source.includes('PIN_THROTTLE_STORAGE_KEY'),'persistent PIN attempt throttling contract missing');
+for(const retired of ['src/components/PinGateModal.js','src/security/pinThrottle.mjs','src/utils/pinKeypad.mjs','src/utils/pinVerifier.mjs','tests/pinKeypad.test.mjs','tests/pinVerifier.test.mjs']) assert(!fs.existsSync(path.join(root,retired)),`retired PIN implementation remains active: ${retired}`);
+assert(!source.includes('PinGateModal')&&!source.includes('pinGateOpen')&&!source.includes('setLLMSettingsPin')&&!source.includes('getLLMSettingsPin')&&!protectedSettings.includes('Change Protected Settings PIN'),'PIN gate remains in active UI or application logic');
 assert(conversation.includes('while(changed)')&&conversation.includes('removed.has(m.parentMessageId)'),'descendant message deletion cascade missing');
 assert(queue.includes("CANCELLED:['QUEUED']")&&queue.includes('recoverInterruptedTurns'),'offline queue retry/restart recovery contract missing');
 assert(workspace.includes('activeWorkspaceChatIds')&&workspace.includes("activeChatId = activeWorkspaceChatIds.has"),'workspace active-chat scoping missing');

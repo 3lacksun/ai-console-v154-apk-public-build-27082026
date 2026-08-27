@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, Modal, ScrollView, StyleSheet, ActivityIndicator } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, Modal, ScrollView, StyleSheet, ActivityIndicator, Switch } from 'react-native';
 import Slider from '@react-native-community/slider';
 import { IconKey, IconServer, IconRefresh, IconClose } from './Icons';
 import { radii } from '../theme';
@@ -17,7 +17,7 @@ export default function LLMSettingsSheet({
   visible, onClose, activeProvider = 'openrouter', onChangeProvider = () => {}, apiKey, onChangeApiKey, togetherApiKey = '', onChangeTogetherApiKey = () => {}, currentModelName, onOpenModelPicker,
   imageModelName = 'Not selected', onOpenImageModelPicker = () => {}, isFetchingImageModels = false, onSyncImageModels = () => {},
   systemPrompt, onChangeSystemPrompt, temperature, onChangeTemperature, maxTokens,
-  onChangeMaxTokens, isFetchingModels, onSyncModels, onChangePin, onOpenProtectedWorkspaceTools = () => {}, apiKeyPersistenceStatus = 'UNKNOWN', togetherApiKeyPersistenceStatus = 'UNKNOWN', palette, returnFocusRef,
+  onChangeMaxTokens, isFetchingModels, onSyncModels, appLockEnabled = false, onToggleAppLock = () => {}, appLockStatusText = 'Device lock is off.', onOpenProtectedWorkspaceTools = () => {}, apiKeyPersistenceStatus = 'UNKNOWN', togetherApiKeyPersistenceStatus = 'UNKNOWN', palette, returnFocusRef,
 }) {
   const styles = useMemo(() => createStyles(palette), [palette]);
   const reducedMotion = useReducedMotion();
@@ -37,7 +37,7 @@ export default function LLMSettingsSheet({
             <TouchableOpacity onPress={onClose} style={styles.closeBtn} accessibilityLabel="Lock and close AI settings" accessibilityRole="button"><IconClose size={18} color={palette.textMuted} /></TouchableOpacity>
           </View>
           <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
-            <Text style={styles.securityNote}>This menu locks whenever it is closed. A 6-digit PIN is required for every new access.</Text>
+            <Text style={styles.securityNote}>Protected settings can use your device biometric or screen lock. No app PIN is stored. When enabled, the app relocks after six hours.</Text>
             <View style={styles.section}>
               <View style={styles.labelRow}><IconServer color={palette.textMuted} /><Text style={styles.label}>Active provider</Text></View>
               <View style={styles.providerRow}>
@@ -104,8 +104,8 @@ export default function LLMSettingsSheet({
               </View>
             </View>
 
+            <View style={styles.appLockRow}><View style={styles.appLockCopy}><Text style={styles.appLockTitle}>Device biometric / screen-lock gate</Text><Text style={styles.appLockDetail}>{appLockStatusText}</Text></View><Switch value={appLockEnabled} onValueChange={onToggleAppLock} accessibilityLabel="Toggle device biometric and screen-lock gate" /></View>
             <TouchableOpacity style={styles.changePinBtn} onPress={onOpenProtectedWorkspaceTools} accessibilityRole="button"><Text style={styles.changePinText}>Manage Prompt Library & Project AI Configuration</Text></TouchableOpacity>
-            <TouchableOpacity style={styles.changePinBtn} onPress={onChangePin} accessibilityRole="button"><Text style={styles.changePinText}>Change Protected Settings PIN</Text></TouchableOpacity>
           </ScrollView>
         </View>
       </View>
@@ -149,6 +149,8 @@ const createStyles = (colors) => StyleSheet.create({
   sliderLabelRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   sliderLabel: { fontSize: 11, fontWeight: '700', color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 1 },
   sliderValue: { fontSize: 11, fontWeight: '700', color: colors.cyanBright }, tokenInput: { minHeight: 48, marginTop: 6, paddingHorizontal: 12, color: colors.textSecondary, backgroundColor: colors.panelAlt, borderWidth: 1, borderColor: colors.border, borderRadius: radii.sm, fontSize: 14 }, tokenHint: { color: colors.textFaint, fontSize: 10, lineHeight: 14 },
+  appLockRow: { minHeight: 76, padding: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, borderRadius: radii.md, backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border },
+  appLockCopy: { flex: 1 }, appLockTitle: { color: colors.textSecondary, fontSize: 12, fontWeight: '700' }, appLockDetail: { marginTop: 4, color: colors.textFaint, fontSize: 10, lineHeight: 15 },
   changePinBtn: { minHeight: 48, alignItems: 'center', justifyContent: 'center', padding: 12, borderRadius: radii.md, backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.borderLight },
   changePinText: { color: colors.textSecondary, fontSize: 12, fontWeight: '700' }, persistenceStatus: { color: colors.textMuted, fontSize: 10, lineHeight: 15, marginTop: 5 },
 });
