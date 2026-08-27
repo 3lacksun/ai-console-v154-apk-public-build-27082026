@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
 import { createPinVerifierAsync } from './pinVerifier.mjs';
+import { normaliseProviderApiKey } from '../providers/providerRegistry.mjs';
 import { normaliseCState, serialiseCState } from '../workspaces/workspaceSchema.mjs';
 
 const SECURE_KEY_NAME='openRouterKey'; const SECURE_TOGETHER_KEY_NAME='togetherApiKey'; const SECURE_LLM_SETTINGS_PIN='llmSettingsPin';
@@ -13,7 +14,7 @@ export function setApiKey(value){const op=async()=>{try{if(value)await SecureSto
 
 export async function getTogetherApiKeyResult(){try{return{ok:true,value:(await SecureStore.getItemAsync(SECURE_TOGETHER_KEY_NAME))||'',status:'READ_OK'};}catch(e){return{ok:false,value:'',status:'READ_FAILED',error:e?.message||'Together AI secure key storage could not be read.'};}}
 export async function getTogetherApiKey(){return(await getTogetherApiKeyResult()).value;}
-export function setTogetherApiKey(value){const op=async()=>{try{if(value)await SecureStore.setItemAsync(SECURE_TOGETHER_KEY_NAME,value);else await SecureStore.deleteItemAsync(SECURE_TOGETHER_KEY_NAME);return{ok:true,persisted:true,status:'SAVED_SECURELY'};}catch(e){return{ok:false,persisted:false,status:'SESSION_ONLY',error:e?.message||'Together AI secure key persistence is unavailable.'};}}; secureWriteChain=secureWriteChain.then(op,op); return secureWriteChain;}
+export function setTogetherApiKey(value){const op=async()=>{try{const key=normaliseProviderApiKey(value);if(key)await SecureStore.setItemAsync(SECURE_TOGETHER_KEY_NAME,key);else await SecureStore.deleteItemAsync(SECURE_TOGETHER_KEY_NAME);return{ok:true,persisted:true,status:'SAVED_SECURELY'};}catch(e){return{ok:false,persisted:false,status:'SESSION_ONLY',error:e?.message||'Together AI secure key persistence is unavailable.'};}}; secureWriteChain=secureWriteChain.then(op,op); return secureWriteChain;}
 export async function getLLMSettingsPin(){try{return(await SecureStore.getItemAsync(SECURE_LLM_SETTINGS_PIN))||'';}catch(_){throw new Error('Secure PIN storage could not be read on this device.');}}
 export async function setLLMSettingsPin(value){try{if(value)await SecureStore.setItemAsync(SECURE_LLM_SETTINGS_PIN,await createPinVerifierAsync(value));else await SecureStore.deleteItemAsync(SECURE_LLM_SETTINGS_PIN);return{ok:true};}catch(_){throw new Error('Secure PIN storage is unavailable on this device.');}}
 

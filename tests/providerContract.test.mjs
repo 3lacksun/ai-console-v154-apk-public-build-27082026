@@ -34,15 +34,26 @@ test('model sync uses Together authenticated models endpoint and normalises chat
       assert.equal(url, 'https://api.together.ai/v1/models');
       assert.equal(options.method, 'GET');
       assert.equal(options.headers.Authorization, 'Bearer together-key');
+      assert.equal(options.headers.Accept, 'application/json');
       assert.equal(options.headers['HTTP-Referer'], undefined);
       return { ok: true, json: async () => ([
-        { id: 'moonshotai/Kimi-K2.5', type: 'chat', display_name: 'Kimi K2.5', organization: 'moonshotai', context_length: 262144 },
+        { id: 'Qwen/Qwen3.5-9B', type: 'chat', display_name: 'Qwen3.5 9B', organization: 'Qwen', context_length: 262144 },
         { id: 'black-forest-labs/FLUX.1-schnell', type: 'image', display_name: 'Flux' },
       ]) };
     };
-    const result = await fetchModels('together-key', 'together');
+    const result = await fetchModels('Authorization: Bearer together-key', 'together');
     assert.equal(result.provider, 'together');
-    assert.deepEqual(result.data, [{ id: 'moonshotai/Kimi-K2.5', name: 'Kimi K2.5', organization: 'moonshotai', contextLength: 262144, pricing: null }]);
+    assert.deepEqual(result.data, [{ id: 'Qwen/Qwen3.5-9B', name: 'Qwen3.5 9B', organization: 'Qwen', contextLength: 262144, pricing: null }]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('Together model sync turns a provider 401 into an actionable raw-key error', async () => {
+  const originalFetch = globalThis.fetch;
+  try {
+    globalThis.fetch = async () => ({ ok: false, status: 401, json: async () => ({ error: { message: 'Unauthorized' } }) });
+    await assert.rejects(() => fetchModels('together-key', 'together'), /Together AI rejected this API key \(HTTP 401\).*paste the key itself/i);
   } finally {
     globalThis.fetch = originalFetch;
   }

@@ -1,8 +1,19 @@
 import { createSseParser } from './sseParser.mjs';
 import { normaliseOutputTokens } from './outputTokens.mjs';
-import { getProviderDefinition, normaliseProviderId, normaliseProviderModelList, providerChatBody, providerHeaders, providerLabel } from '../providers/providerRegistry.mjs';
+import { getProviderDefinition, normaliseProviderApiKey, normaliseProviderId, normaliseProviderModelList, providerChatBody, providerHeaders, providerLabel } from '../providers/providerRegistry.mjs';
 
 const REQUEST_TIMEOUT_MS = 600000;
+
+async function providerResponseError(response, label, operation) {
+  const status = Number(response?.status) || 0;
+  let detail = '';
+  try {
+    const payload = typeof response?.json === 'function' ? await response.json() : null;
+    detail = String(payload?.error?.message || payload?.message || '').trim();
+  } catch (_) {}
+  if (status === 401) return new Error(`${label} rejected this API key (HTTP 401). Create or verify an active ${label} API key, then paste the key itself; an optional Bearer prefix is removed automatically.`);
+  return new Error(detail || `${label} ${operation} failed${status ? ` (HTTP ${status})` : ''}.`);
+}
 
 export function streamChatCompletion({
   provider = 'openrouter',
@@ -20,7 +31,7 @@ export function streamChatCompletion({
   const providerId = normaliseProviderId(provider);
   const definition = getProviderDefinition(providerId);
   const label = providerLabel(providerId);
-  const key = String(apiKey || '').trim();
+  const key = normaliseProviderApiKey(apiKey);
   const xhr = new XMLHttpRequest();
   let lastLength = 0;
   let settled = false;
@@ -65,6 +76,7 @@ export function streamChatCompletion({
         const parsed = JSON.parse(xhr.responseText || '{}');
         message = parsed.error?.message || message;
       } catch (_) {}
+      if (xhr.status === 401) message = `${label} rejected this API key (HTTP 401). Create or verify an active ${label} API key, then paste the key itself; an optional Bearer prefix is removed automatically.`;
       onError(new Error(message));
     }
   };
@@ -115,13 +127,13 @@ export async function fetchModels(apiKey, provider = 'openrouter') {
   const providerId = normaliseProviderId(provider);
   const definition = getProviderDefinition(providerId);
   const label = providerLabel(providerId);
-  const key = String(apiKey || '').trim();
+  const key = normaliseProviderApiKey(apiKey);
   if (!key) throw new Error(`Enter a ${label} API key before syncing models.`);
   const response = await fetch(definition.modelsUrl, {
     method: 'GET',
     headers: providerHeaders(providerId, key),
   });
-  if (!response.ok) throw new Error(`${label} model sync failed (HTTP ${response.status}).`);
+  if (!response.ok) throw await providerResponseError(response, label, 'model sync');
   const payload = await response.json();
   return { data: normaliseProviderModelList(providerId, payload), provider: providerId };
 }

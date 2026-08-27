@@ -10,12 +10,12 @@ export const PROVIDER_LABELS = Object.freeze({
 
 export const DEFAULT_PROVIDER_MODELS = Object.freeze({
   [ProviderId.OPENROUTER]: 'openrouter/auto',
-  [ProviderId.TOGETHER]: 'moonshotai/Kimi-K2.5',
+  [ProviderId.TOGETHER]: 'Qwen/Qwen3.5-9B',
 });
 
 export const INITIAL_PROVIDER_MODEL_GROUPS = Object.freeze({
   [ProviderId.OPENROUTER]: { OpenRouter: [{ id: 'openrouter/auto', name: 'OpenRouter Auto' }] },
-  [ProviderId.TOGETHER]: { 'Together AI': [{ id: 'moonshotai/Kimi-K2.5', name: 'Kimi K2.5' }] },
+  [ProviderId.TOGETHER]: { 'Together AI': [{ id: 'Qwen/Qwen3.5-9B', name: 'Qwen3.5 9B' }] },
 });
 
 const DEFINITIONS = Object.freeze({
@@ -45,11 +45,16 @@ export function providerLabel(provider) {
   return getProviderDefinition(provider).label;
 }
 
+export function normaliseProviderApiKey(apiKey) {
+  return String(apiKey || '').trim().replace(/^(?:authorization\s*:\s*)?bearer\s+/i, '').trim();
+}
+
 export function providerHeaders(provider, apiKey) {
   const id = normaliseProviderId(provider);
   const headers = {
     'Content-Type': 'application/json',
-    Authorization: `Bearer ${String(apiKey || '').trim()}`,
+    Accept: 'application/json',
+    Authorization: `Bearer ${normaliseProviderApiKey(apiKey)}`,
   };
   if (id === ProviderId.OPENROUTER) {
     headers['HTTP-Referer'] = 'https://ai-console.app';

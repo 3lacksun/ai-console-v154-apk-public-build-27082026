@@ -56,7 +56,7 @@ export default function LLMSettingsSheet({
               <View style={styles.labelRow}><IconKey color={palette.textMuted} /><Text style={styles.label}>Together AI API Key</Text></View>
               <TextInput value={togetherApiKey} onChangeText={onChangeTogetherApiKey} placeholder="Together API key" placeholderTextColor={palette.textFaint} secureTextEntry={!showTogetherKey} autoCapitalize="none" autoCorrect={false} style={styles.input} accessibilityLabel="Together AI API key" /><Text style={styles.persistenceStatus} accessibilityLiveRegion="polite">{togetherApiKeyPersistenceStatus === 'SAVED_SECURELY' ? 'Saved securely' : togetherApiKeyPersistenceStatus === 'SESSION_ONLY' ? 'Session only — SecureStore persistence failed' : togetherApiKeyPersistenceStatus === 'READ_FAILED' ? 'Secure storage read failed — existing key was not modified' : togetherApiKeyPersistenceStatus === 'READ_OK' ? 'Secure storage read successfully' : 'Secure persistence not yet verified this session'}</Text>
               <TouchableOpacity onPress={() => setShowTogetherKey((value) => !value)} style={styles.textAction} accessibilityRole="button"><Text style={styles.toggleText}>{showTogetherKey ? 'Hide key' : 'Show key'}</Text></TouchableOpacity>
-              <Text style={styles.hint}>Both provider credentials are stored independently in device-backed SecureStore and are excluded from ordinary exports/backups.</Text>
+              <Text style={styles.hint}>Paste your Together API key from its project settings. A pasted `Bearer ` or `Authorization: Bearer ` prefix is removed automatically. Provider credentials are stored independently in device-backed SecureStore and excluded from ordinary exports/backups.</Text>
             </View>
 
             <View style={styles.section}>

@@ -9,6 +9,7 @@ import {
   providerChatBody,
   providerHeaders,
   providerLabel,
+  normaliseProviderApiKey,
 } from '../src/providers/providerRegistry.mjs';
 import { isProhibitedPropertyKey } from '../src/utils/privacy.mjs';
 
@@ -19,17 +20,20 @@ test('provider registry exposes only the two authorised providers', () => {
   assert.equal(providerLabel('openrouter'), 'OpenRouter');
   assert.equal(providerLabel('together'), 'Together AI');
   assert.equal(getProviderDefinition('together').chatUrl, 'https://api.together.ai/v1/chat/completions');
-  assert.equal(DEFAULT_PROVIDER_MODELS.together, 'moonshotai/Kimi-K2.5');
+  assert.equal(DEFAULT_PROVIDER_MODELS.together, 'Qwen/Qwen3.5-9B');
 });
 
 test('provider headers remain isolated and do not leak OpenRouter metadata to Together', () => {
   const openRouter = providerHeaders('openrouter', 'or-key');
-  const together = providerHeaders('together', 'tg-key');
+  const together = providerHeaders('together', 'Authorization: Bearer tg-key');
   assert.equal(openRouter.Authorization, 'Bearer or-key');
   assert.equal(openRouter['HTTP-Referer'], 'https://ai-console.app');
   assert.equal(together.Authorization, 'Bearer tg-key');
   assert.equal(together['HTTP-Referer'], undefined);
   assert.equal(together['X-Title'], undefined);
+  assert.equal(together.Accept, 'application/json');
+  assert.equal(normaliseProviderApiKey('Bearer tg-key'), 'tg-key');
+  assert.equal(normaliseProviderApiKey(' Authorization: Bearer tg-key '), 'tg-key');
 });
 
 test('provider request bodies preserve shared chat semantics without automatic fallback', () => {
