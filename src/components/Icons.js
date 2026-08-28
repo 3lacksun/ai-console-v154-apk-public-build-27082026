@@ -135,6 +135,8 @@ export const IconPlus = ({ size = 20, color = '#ffffff' }) => (
   </Svg>
 );
 
+export const IconSpeaker = ({ size = 16, color = '#a1a1aa' }) => (<Svg {...base(size, color)}><Path d="M4 10v4h4l5 4V6l-5 4Z"/><Path d="M15 9.5a4 4 0 0 1 0 5"/><Path d="M18 7a7.5 7.5 0 0 1 0 10"/></Svg>);
+
 export const IconMic = ({ size = 20, color = '#ffffff' }) => (
   <Svg {...base(size, color)}>
     <Rect x="9" y="2" width="6" height="12" rx="3" ry="3" />

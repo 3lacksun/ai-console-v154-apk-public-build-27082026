@@ -13,6 +13,9 @@ export const DEFAULT_PROVIDER_MODELS = Object.freeze({
   [ProviderId.TOGETHER]: 'Qwen/Qwen3.5-9B',
 });
 
+export const TOGETHER_SONIC_TTS_MODEL = 'cartesia/sonic-3';
+export const DEFAULT_TOGETHER_SONIC_VOICE = 'friendly sidekick';
+
 export const INITIAL_PROVIDER_MODEL_GROUPS = Object.freeze({
   [ProviderId.OPENROUTER]: { OpenRouter: [{ id: 'openrouter/auto', name: 'OpenRouter Auto' }] },
   [ProviderId.TOGETHER]: { 'Together AI': [{ id: 'Qwen/Qwen3.5-9B', name: 'Qwen3.5 9B' }] },
@@ -30,6 +33,8 @@ const DEFINITIONS = Object.freeze({
     label: PROVIDER_LABELS[ProviderId.TOGETHER],
     chatUrl: 'https://api.together.ai/v1/chat/completions',
     modelsUrl: 'https://api.together.ai/v1/models',
+    audioSpeechUrl: 'https://api.together.ai/v1/audio/speech',
+    voicesUrl: 'https://api.together.ai/v1/voices',
   },
 });
 

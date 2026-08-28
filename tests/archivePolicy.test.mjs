@@ -14,7 +14,9 @@ test('traversal and absolute paths are rejected', () => {
 
 test('zip entry-count, expansion and ratio limits are enforced', () => {
   const entry = (name, uncompressedSize, compressedSize) => ({ name, _data: { uncompressedSize, compressedSize } });
-  assert.throws(() => validateZipEntries(Array.from({ length: ZIP_POLICY.maxFiles + 1 }, (_, i) => entry(`${i}.txt`, 1, 1))));
+  assert.equal(ZIP_POLICY.maxFiles, 100);
+  assert.doesNotThrow(() => validateZipEntries(Array.from({ length: 100 }, (_, i) => entry(`${i}.txt`, 1, 1))));
+  assert.throws(() => validateZipEntries(Array.from({ length: 101 }, (_, i) => entry(`${i}.txt`, 1, 1))));
   assert.throws(() => validateZipEntries([entry('bomb.txt', ZIP_POLICY.maxEntryBytes + 1, 100)]));
   assert.throws(() => validateZipEntries([entry('ratio.txt', 1000000, 1)]));
   assert.throws(() => validateZipEntries([entry('nested.zip', 10, 10)]));

@@ -13,7 +13,7 @@
     "android": {
       "package": "com.nexarenew.aiconsole",
       "softwareKeyboardLayoutMode": "resize",
-      "versionCode": 20,
+      "versionCode": 21,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#f8fafc"
@@ -76,7 +76,8 @@
             "buildToolsVersion": "36.0.0"
           }
         }
-      ]
+      ],
+      "expo-audio"
     ]
   }
 }

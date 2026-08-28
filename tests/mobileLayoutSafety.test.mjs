@@ -13,6 +13,14 @@ test('compact Document Studio keeps browser content in a bounded scroll surface'
   assert.doesNotMatch(documentStudioSource, /const browser=<View/);
 });
 
+test('Android keyboard events lift and reveal the chat composer', () => {
+  assert.match(appSource, /Keyboard\.addListener\('keyboardDidShow', onKeyboardShow\)/);
+  assert.match(appSource, /setAndroidKeyboardHeight\(Math\.max\(0, Number\(event\?\.endCoordinates\?\.height\) \|\| 0\)\)/);
+  assert.match(appSource, /androidKeyboardHeight > 0 \? \{ marginBottom: androidKeyboardHeight \}/);
+  assert.match(appSource, /setTimeout\(scrollToBottom, 180\)/);
+  assert.match(appSource, /behavior=\{Platform\.OS === 'ios' \? 'padding' : undefined\}/);
+});
+
 test('compact app navigation uses Android safe-area insets rather than legacy SafeAreaView', () => {
   assert.match(appSource, /SafeAreaProvider, useSafeAreaInsets/);
   assert.match(appSource, /const insets = useSafeAreaInsets\(\)/);

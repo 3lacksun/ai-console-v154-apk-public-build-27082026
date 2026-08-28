@@ -1,7 +1,7 @@
 import { createId } from '../domain/conversationSchema.mjs';
 import { assertNoProhibitedProperties } from '../utils/privacy.mjs';
 const clean=(v,f='')=>typeof v==='string'&&v.trim()?v.trim():f;const values=i=>Array.from(new Set((i||[]).filter(x=>typeof x==='string'&&x.trim()).map(x=>x.trim())));
-export const requireProtectedPromptAccess=u=>{if(!u)throw new Error('Prompt Library administration requires successful PIN unlock.');};
+export const requireProtectedPromptAccess=u=>{if(!u)throw new Error('Prompt Library administration requires successful device authentication.');};
 export const createPrompt=({name,content,category='General',role='user',variables=[],workspaceIds=[],favourite=false,enabled=true,version=1,createdAt=null,updatedAt=null,now=Date.now(),id=createId('prompt')})=>({id,name:clean(name,'Untitled Prompt'),content:String(content||''),category:clean(category,'General'),role:['system','developer','user'].includes(role)?role:'user',variables:values(variables),workspaceIds:values(workspaceIds),favourite:Boolean(favourite),enabled:enabled!==false,version:Math.max(1,Number(version)||1),createdAt:Number(createdAt)||now,updatedAt:Number(updatedAt)||now});
 export const validatePrompt=p=>{if(!clean(p?.name))throw new Error('Prompt name is required.');if(!String(p?.content||'').trim())throw new Error('Prompt content is required.');if(!['system','developer','user'].includes(p.role))throw new Error('Unsupported prompt role.');assertNoProhibitedProperties(p,{exportScope:true});return true;};
 export const promptAppliesToWorkspace=(p,wid)=>!Array.isArray(p?.workspaceIds)||p.workspaceIds.length===0||p.workspaceIds.includes(wid);

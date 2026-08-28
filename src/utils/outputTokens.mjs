@@ -1,6 +1,6 @@
 export const MIN_OUTPUT_TOKENS = 256;
 export const DEFAULT_OUTPUT_TOKENS = 4096;
-export const MAX_OUTPUT_TOKENS = 65536;
+export const MAX_OUTPUT_TOKENS = 1048576;
 
 export function normaliseOutputTokens(value, fallback = DEFAULT_OUTPUT_TOKENS) {
   const numeric = Number.parseInt(value, 10);
@@ -11,5 +11,6 @@ export function normaliseOutputTokens(value, fallback = DEFAULT_OUTPUT_TOKENS) {
 
 export const formatOutputTokenLimit = (value) => {
   const tokens = normaliseOutputTokens(value);
+  if (tokens >= 1000000) return `${(tokens / 1000000).toFixed(tokens % 1000000 === 0 ? 0 : 2)}m`;
   return tokens >= 1000 ? `${tokens / 1000}k`.replace(/\.0k$/, 'k') : String(tokens);
 };

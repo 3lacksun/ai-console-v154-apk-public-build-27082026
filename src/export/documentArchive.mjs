@@ -28,7 +28,7 @@ export const createChatDocumentArchive = async (chat = {}, messages = [], create
     files: Object.keys(files),
     integrity,
     sourceBytes,
-    exclusions: ['API keys', 'PIN material', 'protected AI instructions', 'attachment extraction context', 'hidden request content'],
+    exclusions: ['API keys', 'obsolete app-lock records', 'protected AI instructions', 'attachment extraction context', 'hidden request content'],
   };
   const JSZip = await loadJSZip();
   const zip = new JSZip();

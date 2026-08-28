@@ -49,14 +49,14 @@ test('workspace CRUD and relationship integrity preserve chats when a workspace 
 
 test('Prompt Library administration requires protected access and versions protected edits', () => {
   const prompt = createPrompt({ name: 'Summarise', content: 'Summarise {{topic}}', role: 'user' });
-  assert.throws(() => addPrompt([], prompt, false), /requires successful PIN unlock/);
+  assert.throws(() => addPrompt([], prompt, false), /requires successful device authentication/);
   let library = addPrompt([], prompt, true);
   library = updatePrompt(library, prompt.id, { content: 'Explain {{topic}}' }, true, 2);
   library = duplicatePrompt(library, prompt.id, true, 3);
   assert.equal(library[0].version, 2);
   assert.equal(searchPrompts(library, 'explain').length, 2);
   assert.equal(expandPromptVariables(library[0], { topic: 'migration' }), 'Explain migration');
-  assert.throws(() => requireProtectedPromptAccess(false), /requires successful PIN unlock/);
+  assert.throws(() => requireProtectedPromptAccess(false), /requires successful device authentication/);
 });
 
 test('attachment session supports multi-file add/reorder and persists metadata without transient content', () => {
@@ -137,11 +137,13 @@ test('workflow trees preserve roots, child indentation, workflow status and lega
   assert.equal(setWorkflowStatus(child, nextWorkflowStatus(child.workflowStatus)).workflowStatus, 'BLOCKED');
 });
 
-test('large-model output token policy rounds, clamps and exposes a 65,536-token ceiling', () => {
+test('large-model output token policy rounds, clamps and exposes a 1,048,576-token ceiling', () => {
   assert.equal(DEFAULT_OUTPUT_TOKENS, 4096);
+  assert.equal(MAX_OUTPUT_TOKENS, 1048576);
   assert.equal(normaliseOutputTokens(1), MIN_OUTPUT_TOKENS);
-  assert.equal(normaliseOutputTokens(65499), MAX_OUTPUT_TOKENS);
-  assert.equal(normaliseOutputTokens(200000), MAX_OUTPUT_TOKENS);
+  assert.equal(normaliseOutputTokens(1000000), 999936);
+  assert.equal(normaliseOutputTokens(1048576), MAX_OUTPUT_TOKENS);
+  assert.equal(normaliseOutputTokens(2000000), MAX_OUTPUT_TOKENS);
 });
 
 test('local PDF formatter escapes visible conversation and excludes hidden request context', () => {
