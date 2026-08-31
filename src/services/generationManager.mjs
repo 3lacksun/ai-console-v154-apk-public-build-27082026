@@ -60,7 +60,7 @@ export class GenerationManager {
 
   complete(chatId, jobId) {
     const current = this.get(chatId);
-    if (!current || current.jobId !== jobId || current.status !== GenerationStatus.STREAMING) return false;
+    if (!current || current.jobId !== jobId || ![GenerationStatus.STREAMING, GenerationStatus.PAUSED].includes(current.status)) return false;
     this.jobs.set(chatId, transitionGeneration(current, GenerationStatus.COMPLETE, this.now()));
     this.streams.delete(chatId);
     this.emit(chatId);
@@ -74,6 +74,28 @@ export class GenerationManager {
     this.jobs.set(chatId, transitionGeneration(current, status, this.now(), error));
     this.streams.delete(chatId);
     this.emit(chatId);
+    return true;
+  }
+
+  pause(chatId) {
+    const current = this.get(chatId);
+    if (!current || current.status !== GenerationStatus.STREAMING) return false;
+    const entry = this.streams.get(chatId);
+    if (!entry?.stream?.pause) return false;
+    this.jobs.set(chatId, transitionGeneration(current, GenerationStatus.PAUSED, this.now()));
+    this.emit(chatId);
+    entry.stream.pause();
+    return true;
+  }
+
+  resume(chatId) {
+    const current = this.get(chatId);
+    if (!current || current.status !== GenerationStatus.PAUSED) return false;
+    const entry = this.streams.get(chatId);
+    if (!entry?.stream?.resume) return false;
+    this.jobs.set(chatId, transitionGeneration(current, GenerationStatus.STREAMING, this.now()));
+    this.emit(chatId);
+    entry.stream.resume();
     return true;
   }
 

@@ -119,3 +119,33 @@ test('safe markdown keeps code blocks while stripping executable markup and malf
   const blocks = parseMarkdownBlocks('Before\n```js\nconst x = 1;\n```\nAfter');
   assert.equal(blocks.find((block) => block.type === 'code').language, 'js');
 });
+
+
+test('generation manager pauses and resumes a buffered provider stream before completion', () => {
+  let callbacks;
+  let paused = 0;
+  let resumed = 0;
+  const manager = new GenerationManager({ now: () => 100 });
+  manager.setDeltaHandler(() => {});
+  manager.start({ chatId: 'pause-chat', targetMessageId: 'target', streamFactory: (next) => {
+    callbacks = next;
+    return { pause: () => { paused += 1; }, resume: () => { resumed += 1; }, cancel: () => {} };
+  } });
+  assert.equal(manager.pause('pause-chat'), true);
+  assert.equal(manager.get('pause-chat').status, GenerationStatus.PAUSED);
+  assert.equal(paused, 1);
+  assert.equal(manager.resume('pause-chat'), true);
+  assert.equal(manager.get('pause-chat').status, GenerationStatus.STREAMING);
+  assert.equal(resumed, 1);
+  callbacks.onDone();
+  assert.equal(manager.get('pause-chat').status, GenerationStatus.COMPLETE);
+});
+
+
+test('conversation AI presets persist safe controls without provider credentials', () => {
+  const chat = createChat('Preset chat', 1);
+  const state = migratePackageAToB({ chats: [{ ...chat, aiPreset: { provider: 'together', model: 'Qwen/Qwen3.5-9B', temperature: 0.7, maxTokens: 1000000, togetherSonicVoice: 'friendly sidekick', apiKey: 'never-persist' } }], activeChatId: chat.id }, 2);
+  assert.deepEqual(state.chats[0].aiPreset, { provider: 'together', model: 'Qwen/Qwen3.5-9B', temperature: 0.7, maxTokens: 1000000, togetherSonicVoice: 'friendly sidekick' });
+  const serialised = serialiseBState(state);
+  assert.equal(JSON.stringify(serialised).includes('never-persist'), false);
+});

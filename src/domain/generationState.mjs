@@ -2,6 +2,7 @@ export const GenerationStatus = Object.freeze({
   IDLE: 'IDLE',
   QUEUED: 'QUEUED',
   STREAMING: 'STREAMING',
+  PAUSED: 'PAUSED',
   CANCELLING: 'CANCELLING',
   COMPLETE: 'COMPLETE',
   FAILED: 'FAILED',
@@ -11,7 +12,8 @@ export const GenerationStatus = Object.freeze({
 const transitions = Object.freeze({
   [GenerationStatus.IDLE]: [GenerationStatus.QUEUED],
   [GenerationStatus.QUEUED]: [GenerationStatus.STREAMING, GenerationStatus.CANCELLING, GenerationStatus.FAILED, GenerationStatus.CANCELLED],
-  [GenerationStatus.STREAMING]: [GenerationStatus.CANCELLING, GenerationStatus.COMPLETE, GenerationStatus.FAILED, GenerationStatus.CANCELLED],
+  [GenerationStatus.STREAMING]: [GenerationStatus.PAUSED, GenerationStatus.CANCELLING, GenerationStatus.COMPLETE, GenerationStatus.FAILED, GenerationStatus.CANCELLED],
+  [GenerationStatus.PAUSED]: [GenerationStatus.STREAMING, GenerationStatus.CANCELLING, GenerationStatus.COMPLETE, GenerationStatus.FAILED, GenerationStatus.CANCELLED],
   [GenerationStatus.CANCELLING]: [GenerationStatus.CANCELLED, GenerationStatus.FAILED],
   [GenerationStatus.COMPLETE]: [GenerationStatus.QUEUED],
   [GenerationStatus.FAILED]: [GenerationStatus.QUEUED],

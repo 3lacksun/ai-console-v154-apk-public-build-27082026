@@ -49,7 +49,9 @@ export function sanitizeMessageForPersistence(message = {}) {
   const attachment = safeAttachment(message.attachment); if (attachment) safe.attachment = attachment;
   return safe;
 }
+const safeAiPreset = (preset) => preset && typeof preset === 'object' && String(preset.model || '').trim() ? { provider: String(preset.provider || 'openrouter').trim().toLowerCase() === 'together' ? 'together' : 'openrouter', model: String(preset.model).trim(), temperature: Math.min(2, Math.max(0, Number(preset.temperature) || 0.2)), maxTokens: Math.min(1048576, Math.max(256, Math.floor(Number(preset.maxTokens) || 2048))), togetherSonicVoice: String(preset.togetherSonicVoice || '').trim() || null } : null;
 export function sanitizeChatForPersistence(chat = {}) {
+  const aiPreset = safeAiPreset(chat.aiPreset);
   return {
     id: chat.id,
     workspaceId: chat.workspaceId || null,
@@ -59,6 +61,7 @@ export function sanitizeChatForPersistence(chat = {}) {
     pinned: Boolean(chat.pinned), archived: Boolean(chat.archived),
     tags: Array.isArray(chat.tags) ? [...chat.tags] : [], folderId: chat.folderId || null, folderName: chat.folderName || null,
     activeBranchId: chat.activeBranchId || 'main', workflowParentId: chat.workflowParentId || null, workflowStatus: chat.workflowStatus || 'ACTIVE',
+    aiPreset,
     bookmarks: Array.isArray(chat.bookmarks) ? stripPrivateProperties(chat.bookmarks) : [],
     createdAt: Number(chat.createdAt) || 0, updatedAt: Number(chat.updatedAt) || Number(chat.createdAt) || 0,
   };

@@ -33,7 +33,7 @@ const expo = app.expo || {};
 if (expo.version !== '1.5.4') fail(`app.json version drift: ${expo.version}`);
 if (expo.userInterfaceStyle !== 'light') fail(`app.json userInterfaceStyle must remain light, found ${expo.userInterfaceStyle}`);
 if (expo.android?.package !== 'com.nexarenew.aiconsole') fail(`Android package drift: ${expo.android?.package}`);
-if (expo.android?.versionCode !== 21) fail(`Android versionCode drift: ${expo.android?.versionCode}`);
+if (expo.android?.versionCode !== 22) fail(`Android versionCode drift: ${expo.android?.versionCode}`);
 console.log('ANDROID_SDK_36_RESOLUTION: guarded by Expo SDK 57 package alignment; workflow verifies generated Gradle compile/target SDK after Expo prebuild.');
 
 console.log('CI_VERSION_GUARD: PASS');

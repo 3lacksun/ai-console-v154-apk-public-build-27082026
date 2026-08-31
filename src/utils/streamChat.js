@@ -1,8 +1,26 @@
 import { createSseParser } from './sseParser.mjs';
 import { normaliseOutputTokens } from './outputTokens.mjs';
 import { DEFAULT_TOGETHER_SONIC_VOICE, TOGETHER_SONIC_TTS_MODEL, getProviderDefinition, normaliseProviderApiKey, normaliseProviderId, normaliseProviderModelList, providerChatBody, providerHeaders, providerLabel } from '../providers/providerRegistry.mjs';
+import { DEFAULT_RETRY_POLICY, retryDelayMs, shouldRetryAttempt } from '../providers/retryPolicy.mjs';
 
 const REQUEST_TIMEOUT_MS = 600000;
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function fetchProviderWithRetry(url, init, policy = DEFAULT_RETRY_POLICY) {
+  let lastError;
+  for (let attempt = 1; attempt <= policy.maxAttempts; attempt += 1) {
+    try {
+      const response = await fetch(url, init);
+      if (response.ok || !shouldRetryAttempt(attempt, { status: response.status }, policy)) return response;
+      lastError = new Error(`Provider request returned HTTP ${response.status}.`);
+    } catch (error) {
+      lastError = error;
+      if (!shouldRetryAttempt(attempt, { network: true }, policy)) throw error;
+    }
+    await sleep(retryDelayMs(attempt, policy));
+  }
+  throw lastError || new Error('Provider request failed after bounded retries.');
+}
 
 async function providerResponseError(response, label, operation) {
   const status = Number(response?.status) || 0;
@@ -35,9 +53,14 @@ export function streamChatCompletion({
   const xhr = new XMLHttpRequest();
   let lastLength = 0;
   let settled = false;
+  let paused = false;
+  let bufferedDeltas = '';
+  let doneWhilePaused = false;
+  const emitDelta = (content) => { if (!content) return; if (paused) bufferedDeltas += content; else onDelta(content); };
+  const finish = () => { if (paused) { doneWhilePaused = true; return; } onDone(); };
   const parser = createSseParser((parsed) => {
     const content = parsed.choices?.[0]?.delta?.content;
-    if (content) onDelta(content);
+    emitDelta(content);
     const meta = { id: parsed.id || null, model: parsed.model || model, provider: label, providerId };
     if (parsed.usage && typeof parsed.usage === 'object') onUsage(parsed.usage, meta);
     if (parsed.id || parsed.model || parsed.provider || parsed.usage) onMeta(meta);
@@ -69,7 +92,7 @@ export function streamChatCompletion({
     }
     parser.flush();
     settled = true;
-    if (xhr.status >= 200 && xhr.status < 300) onDone();
+    if (xhr.status >= 200 && xhr.status < 300) finish();
     else {
       let message = `${label} request failed (HTTP ${xhr.status}).`;
       try {
@@ -102,7 +125,16 @@ export function streamChatCompletion({
     maxTokens: normaliseOutputTokens(maxTokens),
   })));
 
-  return { cancel: () => { if (!settled) xhr.abort(); } };
+  return {
+    pause: () => { if (!settled) paused = true; },
+    resume: () => {
+      if (!paused) return;
+      paused = false;
+      if (bufferedDeltas) { const buffered = bufferedDeltas; bufferedDeltas = ''; onDelta(buffered); }
+      if (doneWhilePaused) { doneWhilePaused = false; onDone(); }
+    },
+    cancel: () => { bufferedDeltas = ''; doneWhilePaused = false; if (!settled) xhr.abort(); },
+  };
 }
 
 export function completeChatCompletion(options) {
@@ -139,7 +171,7 @@ export async function fetchTogetherSonicVoices(apiKey, model = TOGETHER_SONIC_TT
   const definition = getProviderDefinition('together');
   const key = normaliseProviderApiKey(apiKey);
   if (!key) throw new Error('Enter a Together AI API key before loading Sonic voices.');
-  const response = await fetch(`${definition.voicesUrl}?model=${encodeURIComponent(model)}`, {
+  const response = await fetchProviderWithRetry(`${definition.voicesUrl}?model=${encodeURIComponent(model)}`, {
     method: 'GET',
     headers: providerHeaders('together', key),
   });
@@ -155,7 +187,7 @@ export async function createTogetherSonicSpeech({ apiKey, input, voice = DEFAULT
   if (!key) throw new Error('Enter a Together AI API key before using Together Sonic speech.');
   if (!text) throw new Error('There is no message text to speak.');
   if (text.length > 30000) throw new Error('This message is too long for a single Sonic speech request. Select or shorten the text, then try again.');
-  const response = await fetch(definition.audioSpeechUrl, {
+  const response = await fetchProviderWithRetry(definition.audioSpeechUrl, {
     method: 'POST',
     headers: { ...providerHeaders('together', key), Accept: 'audio/mpeg' },
     body: JSON.stringify({ model, input: text, voice: selectedVoice, response_format: 'mp3', sample_rate: 44100, bit_rate: 128000, language: String(locale || 'en').toLowerCase(), stream: false }),
@@ -172,7 +204,7 @@ export async function fetchModels(apiKey, provider = 'openrouter') {
   const label = providerLabel(providerId);
   const key = normaliseProviderApiKey(apiKey);
   if (!key) throw new Error(`Enter a ${label} API key before syncing models.`);
-  const response = await fetch(definition.modelsUrl, {
+  const response = await fetchProviderWithRetry(definition.modelsUrl, {
     method: 'GET',
     headers: providerHeaders(providerId, key),
   });

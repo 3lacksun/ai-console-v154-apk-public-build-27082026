@@ -9,7 +9,7 @@ export const createOrdinaryBackup = (state, now = Date.now()) => {
   const c = serialiseCState(normaliseCState(state, now), now);
   const { promptLibrary, documentSession, backupMetadata, ...safe } = c;
   const workspaces = (safe.workspaces || []).map(({ projectAIConfiguration, ...workspace }) => workspace);
-  return { backupSchemaVersion: BACKUP_SCHEMA_VERSION, appStorageSchemaVersion: STORAGE_SCHEMA_VERSION_C, createdAt: now, payload: { ...safe, workspaces, documentSession: null }, exclusions: ['API keys', 'provider credentials', 'SecureStore contents', 'PIN verifier/material', 'transient attachment/document context', 'protected prompt content', 'project AI configuration'] };
+  return { backupSchemaVersion: BACKUP_SCHEMA_VERSION, appStorageSchemaVersion: STORAGE_SCHEMA_VERSION_C, createdAt: now, payload: { ...safe, workspaces, documentSession: null }, exclusions: ['API keys', 'provider credentials', 'SecureStore contents', 'legacy app-lock verifier data', 'transient attachment/document context', 'protected prompt content', 'project AI configuration'] };
 };
 
 export const validateOrdinaryBackup = (candidate) => {
