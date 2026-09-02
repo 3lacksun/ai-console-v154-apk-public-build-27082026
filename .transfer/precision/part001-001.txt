@@ -1,0 +1,20 @@
+diff --git a/App.js b/App.js
+index 1a5f7643ca35b088c86ccdfdb575d2661cf6761c..2c6d8a7d3a5127bfb04c00cb194d0abc1ef46a48 100644
+--- a/App.js
++++ b/App.js
+@@ -21,8 +21,9 @@ import DocumentStudio from './src/components/DocumentStudio';
+ import DocumentTargetSheet from './src/components/DocumentTargetSheet';
+ import IntelligenceHub from './src/components/IntelligenceHub';
+ import FullVoiceScreen from './src/components/FullVoiceScreen';
++import WorkspaceCommandOverview from './src/components/WorkspaceCommandOverview';
+ import AppErrorBoundary from './src/components/AppErrorBoundary';
+-import { IconAlert, IconBot, IconChat, IconClose, IconDocument, IconKey, IconMic, IconSend, IconSettings, IconStop, IconUpload, IconWorkspace } from './src/components/Icons';
++import { IconAlert, IconBot, IconChat, IconClose, IconDocument, IconKey, IconMic, IconSend, IconSettings, IconStop, IconUpload, IconVoice, IconWorkspace } from './src/components/Icons';
+ import { getColors, radii } from './src/theme';
+ import { DEFAULT_SYSTEM_PROMPT, commitStateTransaction, formatProviderName, getApiKeyResult, getTogetherApiKeyResult, getJSON, getLLMSettingsPin, getVersionedAppStateResult, INITIAL_MODELS, persistAndVerifyVersionedAppState, setApiKey as persistApiKey, setTogetherApiKey as persistTogetherApiKey, setJSON, setLLMSettingsPin } from './src/utils/storage';
+ import { sanitizeChatsForPersistence } from './src/utils/privacy.mjs';
+@@ -50,8 +51,8 @@ import { createDocumentProjectArchive, documentProjectFilename, mergeParsedDocum
+ import { appendRevision, applyAiDocumentOperation, applyRevisionHead, createDocument, createRevision, markDocumentSaved, markDocumentSaveFailed, markDocumentSaving, placeVisibleChatMessage } from './src/documents/documentDomain.mjs';
+ import { exportDocument, previewDocumentPdf } from './src/documents/documentExport';
+ import { renderDocumentText } from './src/documents/documentRender.mjs';
+-import { classifyLayout } from './src/ui/responsive.mjs';
