@@ -1,0 +1,3 @@
+Runner-isolation test for Dr Stones Command Centre v1.5.4.
+Created 02/09/2026.
+No application source change.
