@@ -1,0 +1,149 @@
+name: Precision Authoritative v1.5.4 Carrier
+
+on:
+  push:
+    branches:
+      - precision-authoritative-apk-02092026
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: precision-authoritative-v154-carrier
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      CI: "1"
+      EXPO_NO_TELEMETRY: "1"
+    steps:
+      - name: Checkout exact historical base carrier
+        uses: actions/checkout@v6
+
+      - name: Set up Node 24
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Verify and apply audited Precision patch transport
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat .ci/precision-patch-b64/part-01.b64 \
+              .ci/precision-patch-b64/part-02.b64 \
+              .ci/precision-patch-b64/part-03.b64 \
+              .ci/precision-patch-b64/part-04.b64 > /tmp/precision.b64
+          echo '2ba6a7639c12714481ec54ac3ce6b1689d9b370f9c3d03634c9abc68bf772707  /tmp/precision.b64' | sha256sum -c -
+          base64 -d /tmp/precision.b64 > /tmp/precision.patch.gz
+          echo '98c1c8213d3f7053ea5690feb24d64df21d6016cb658b524528a70c1c24948f2  /tmp/precision.patch.gz' | sha256sum -c -
+          gzip -dc /tmp/precision.patch.gz > /tmp/precision.patch
+          echo 'fc639040e36a900104a8e4adf29b9f8c21b06628bb66623bea3d865775ea3808  /tmp/precision.patch' | sha256sum -c -
+          test "$(git hash-object App.js)" = '1a5f7643ca35b088c86ccdfdb575d2661cf6761c'
+          git apply --check /tmp/precision.patch
+          git apply /tmp/precision.patch
+
+      - name: Verify all Precision target Git blobs
+        shell: bash
+        run: |
+          set -euo pipefail
+          check_blob() { test "$(git hash-object "$1")" = "$2" || { echo "Blob mismatch: $1" >&2; exit 1; }; }
+          check_blob App.js 2c6d8a7d3a5127bfb04c00cb194d0abc1ef46a48
+          check_blob scripts/static-check.mjs 6a8bfe97d6b12636998e41753363638cbc3271fb
+          check_blob src/components/DocumentStudio.js f55f2248983ac720d4e10e64efaff51d693b0797
+          check_blob src/components/FullVoiceScreen.js ffb77d9f1953609be7c97c3a749a0115bc5bfb42
+          check_blob src/components/Icons.js fec2f52cae93319d54ffa717c7c93f500e4a9d3a
+          check_blob src/components/IntelligenceHub.js ff4ebb926ea285ab4495f5b96bf158c7f16683d0
+          check_blob src/components/LLMSettingsSheet.js 32277c7d4c9cfe16be0b9cb5c5e2ee4fbab1d1e5
+          check_blob src/components/WorkspaceCommandOverview.js b57b0014a93a11d1f91fd5e836988d4614316660
+          check_blob src/theme.js db54adbaaab461d16260dded4351d3525e25b59b
+          check_blob src/ui/motion.mjs 73777e1a1f8114da059a40c3ec9c4e701ca506ef
+          check_blob src/ui/primitives.js c793c432ebcd8c64702062fcde604347208f974c
+          check_blob src/ui/responsive.mjs 2925e41361fc80294f763f9be1deb78839e69ac8
+          check_blob src/ui/tokens.js 4349e5f572c703b39e14e198438110ac8ddb14a7
+          check_blob tests/mobileLayoutSafety.test.mjs 9856b2bb24ca95cb2875de784f952d1a3317cb14
+          check_blob tests/precision-command-centre.test.mjs 73ed146896156b26fcb987dc411bad5da028d823
+          echo 'PASS: all 15 Precision target blobs exact'
+
+      - name: Install baseline dependencies
+        run: npm ci
+
+      - name: Static and full test gates on exact Precision source
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run check
+          npm test
+
+      - name: Converge Expo SDK 57 dependencies in runner only
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx expo install --fix
+          npx expo install --check
+          npx expo-doctor
+
+      - name: Install Android API 36 build prerequisites
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager 'platform-tools' 'platforms;android-36' 'build-tools;36.0.0'
+
+      - name: Expo prebuild Android
+        run: npx expo prebuild --platform android --clean --no-install
+
+      - name: Verify generated SDK 36 and normalise Gradle resources
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -R --line-number 'compileSdk.*36\|compileSdkVersion.*36' android | head -20
+          grep -R --line-number 'targetSdk.*36\|targetSdkVersion.*36' android | head -20
+          printf '\norg.gradle.workers.max=1\norg.gradle.parallel=false\norg.gradle.daemon=false\norg.gradle.jvmargs=-Xmx3072m -XX:MaxMetaspaceSize=1024m -Dfile.encoding=UTF-8\n' >> android/gradle.properties
+          grep -n '^android.buildToolsVersion=36\.0\.0$' android/gradle.properties
+          grep -n '^org.gradle.workers.max=1$' android/gradle.properties
+
+      - name: Gradle debug APK
+        working-directory: android
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew app:assembleDebug --no-daemon --max-workers=1 --stacktrace
+
+      - name: Verify APK identity and Android alignment
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=android/app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          AAPT="$ANDROID_HOME/build-tools/36.0.0/aapt2"
+          ZIPALIGN="$ANDROID_HOME/build-tools/36.0.0/zipalign"
+          BADGING="$($AAPT dump badging "$APK")"
+          printf '%s\n' "$BADGING" | head -5
+          printf '%s\n' "$BADGING" | grep -F "package: name='com.nexarenew.aiconsole' versionCode='19' versionName='1.5.4'"
+          "$ZIPALIGN" -c -P 16 -v 4 "$APK"
+          sha256sum "$APK" | tee APK_SHA256.txt
+          cp "$APK" DR_STONES_COMMAND_CENTRE_V1_5_4_PRECISION_PREVIEW_DEBUG.apk
+
+      - name: Upload verified Precision APK
+        uses: actions/upload-artifact@v6
+        with:
+          name: DR_STONES_COMMAND_CENTRE_V1_5_4_PRECISION_PREVIEW_DEBUG
+          path: |
+            DR_STONES_COMMAND_CENTRE_V1_5_4_PRECISION_PREVIEW_DEBUG.apk
+            APK_SHA256.txt
+          if-no-files-found: error
+          retention-days: 14
