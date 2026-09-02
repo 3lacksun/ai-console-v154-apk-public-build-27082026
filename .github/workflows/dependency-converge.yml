@@ -26,11 +26,11 @@ jobs:
           cache: npm
           cache-dependency-path: package-lock.json
 
-      - name: Regenerate exact Expo-compatible lockfile
+      - name: Regenerate exact Expo-compatible dependency manifests
         shell: bash
         run: |
           set -euo pipefail
-          npm install --package-lock-only --ignore-scripts --no-audit --no-fund \
+          npm install --ignore-scripts --no-audit --no-fund \
             expo@~57.0.19 \
             expo-asset@~57.0.16 \
             expo-build-properties@~57.0.16 \
@@ -38,7 +38,7 @@ jobs:
             expo-image-picker@~57.0.15 \
             expo-secure-store@~57.0.3 \
             expo-sharing@~57.0.17
-          npx --yes expo@57.0.19 install --check
+          npx expo install --check
           git diff --check
 
       - name: Commit converged manifests
