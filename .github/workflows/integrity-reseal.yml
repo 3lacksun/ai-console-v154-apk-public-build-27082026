@@ -1,0 +1,77 @@
+name: v1.5.4 integrity reseal
+
+on:
+  push:
+    branches:
+      - v154-runner-isolation-02092026
+
+permissions:
+  contents: write
+
+jobs:
+  reseal:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout continuation branch
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: v154-runner-isolation-02092026
+          fetch-depth: 1
+
+      - name: Reseal only corrected dependency manifests
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib
+
+          manifest = Path('HANDOVER_SHA256SUMS.txt')
+          original = manifest.read_text(encoding='utf-8')
+          lines = original.splitlines()
+          targets = ['package.json', 'package-lock.json']
+          expected = {}
+          for target in targets:
+              expected[target] = hashlib.sha256(Path(target).read_bytes()).hexdigest()
+
+          changed = []
+          out = []
+          for line in lines:
+              parts = line.split('  ', 1)
+              if len(parts) == 2 and parts[1] in expected:
+                  target = parts[1]
+                  if target in changed:
+                      raise SystemExit(f'duplicate checksum entry: {target}')
+                  out.append(f'{expected[target]}  {target}')
+                  changed.append(target)
+              else:
+                  out.append(line)
+
+          if sorted(changed) != sorted(targets):
+              raise SystemExit(f'expected exactly {targets}, changed {changed}')
+          manifest.write_text('\n'.join(out) + ('\n' if original.endswith('\n') else ''), encoding='utf-8')
+          print('package.json', expected['package.json'])
+          print('package-lock.json', expected['package-lock.json'])
+          PY
+
+          git diff -- HANDOVER_SHA256SUMS.txt
+          test "$(git diff --numstat -- HANDOVER_SHA256SUMS.txt | awk '{print $1+$2}')" -eq 4
+
+      - name: Verify fail-closed static integrity after reseal
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci --no-fund
+          npm run check
+
+      - name: Commit checksum reseal
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add HANDOVER_SHA256SUMS.txt
+          git diff --cached --exit-code && exit 0 || true
+          git commit -m 'Reseal v1.5.4 dependency integrity manifest'
+          git push origin HEAD:v154-runner-isolation-02092026
