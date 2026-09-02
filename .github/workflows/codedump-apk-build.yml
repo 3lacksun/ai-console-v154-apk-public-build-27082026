@@ -1,0 +1,183 @@
+name: Code Dump Tool BuildSpec APK
+
+on:
+  push:
+    branches: [ codedump-buildspec-apk-03092026 ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: codedump-buildspec-apk-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CI: true
+  OVERLAY_B64_SHA256: 9cbfe6256e830f9ed5d27d0f131065bd8fa993f87d93030124e88e4ff9211817
+  OVERLAY_TAR_SHA256: 8ef0bed630e0df380949e5cdecaf3d949096c37b28e4395e3f7d70325d0b824d
+
+jobs:
+  build:
+    name: Verify green candidate and build APK/AAB
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout public carrier branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Materialise and hash-verify green production overlay
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd codedump
+          test "$(sha256sum green-runtime-overlay.tar.gz.b64 | awk '{print $1}')" = "$OVERLAY_B64_SHA256"
+          base64 --decode green-runtime-overlay.tar.gz.b64 > /tmp/codedump-green-overlay.tar.gz
+          test "$(sha256sum /tmp/codedump-green-overlay.tar.gz | awk '{print $1}')" = "$OVERLAY_TAR_SHA256"
+          tar -xzf /tmp/codedump-green-overlay.tar.gz
+          sha256sum -c <<'EOF'
+          e5088f7a46c801b46754888c34ea84d73b8bf2d0d22063fd2f7aad6b513f2258  web/app.css
+          e6efae9807c416ddff0c2e834e78f4f15e8093c40ed0a74071fae9df1d7ce273  web/app.js
+          d2ab0bfd774bd8fcee02d5ba2f682d9d11b4ba318d35f69b435746b55fa3b31b  web/archive-core.js
+          6f5dae37a3321d18feb93837088adc5d7a19f31d9097aa745c190b0594e725d1  web/core.js
+          e6f4879325a198badf0ab4d515c2a46b021c4d55b3e12b76c4d8fe35d15ded06  web/index.html
+          5fbc77deec8bda1a20655dc77fd18b9ccae92070b3c3fa5eb5316dd0f230c318  web/platform.js
+          1971f5e6181d4eda542a3d00497e72d0892a1befab4426f07e14d0ea3992a55c  native/android-overlay/app/src/main/java/app/codedump/tool/CodeDumpNativePlugin.kt
+          EOF
+          test -f web/archive-worker.js
+          test -f web/manifest.webmanifest
+          test -f web/offline.html
+          test -f web/sw.js
+          test -f web/icons/icon-192.png
+          test -f web/icons/icon-512.png
+          test -f web/icons/icon-maskable-512.png
+
+      - name: Set up Node 22
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22'
+
+      - name: Set up Java 21
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
+        with:
+          cmdline-tools-version: '14742923'
+          packages: ''
+          accept-android-sdk-licenses: true
+          log-accepted-android-sdk-licenses: false
+
+      - name: Install Android API 36 and Build Tools 36.0.0
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+          test -f "$ANDROID_SDK_ROOT/platforms/android-36/android.jar"
+          test -x "$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt2"
+
+      - name: Install pinned Capacitor and JSZip dependencies
+        working-directory: codedump
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --no-audit --no-fund
+          npm install --no-audit --no-fund --no-save jszip@3.10.1
+          node -e "const p=require('./node_modules/@capacitor/core/package.json'); if(p.version!=='8.5.0') process.exit(1)"
+          node -e "const p=require('./node_modules/@capacitor/android/package.json'); if(p.version!=='8.5.0') process.exit(1)"
+          node -e "const p=require('./node_modules/@capacitor/cli/package.json'); if(p.version!=='8.5.0') process.exit(1)"
+          node -e "const p=require('./node_modules/jszip/package.json'); if(p.version!=='3.10.1') process.exit(1)"
+          mkdir -p web/vendor
+          cp node_modules/jszip/dist/jszip.min.js web/vendor/jszip.min.js
+          test -s web/vendor/jszip.min.js
+
+      - name: Prepare Capacitor Android project
+        working-directory: codedump
+        run: node scripts/prepare-android.mjs
+
+      - name: Verify generated Android project
+        working-directory: codedump
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f android/gradlew
+          test -f android/app/src/main/java/app/codedump/tool/MainActivity.kt
+          test -f android/app/src/main/java/app/codedump/tool/CodeDumpNativePlugin.kt
+          test -f android/app/src/main/res/xml/file_paths.xml
+          grep -q "com.android.tools.build:gradle:8.13.2" android/build.gradle
+          grep -q "org.jetbrains.kotlin:kotlin-gradle-plugin:2.3.20" android/build.gradle
+          grep -q "androidx.documentfile:documentfile:1.1.0" android/app/build.gradle
+          grep -q "sourceCompatibility JavaVersion.VERSION_21" android/app/build.gradle
+          grep -q "jvmTarget = '21'" android/app/build.gradle
+          grep -q "versionCode 2" android/app/build.gradle
+          grep -q 'versionName "1.1.0"' android/app/build.gradle
+
+      - name: Set up Gradle cache and wrapper validation
+        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+
+      - name: Run unit tests, lint and Android builds
+        working-directory: codedump/android
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew --no-daemon --stacktrace \
+            testDebugUnitTest \
+            lintDebug \
+            assembleDebug \
+            assembleRelease \
+            bundleRelease
+
+      - name: Stage build artefacts and provenance
+        if: success()
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          cp codedump/android/app/build/outputs/apk/debug/app-debug.apk artifacts/
+          find codedump/android/app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' -exec cp {} artifacts/ \;
+          find codedump/android/app/build/outputs/bundle/release -maxdepth 1 -type f -name '*.aab' -exec cp {} artifacts/ \;
+          {
+            echo "Carrier repository: $GITHUB_REPOSITORY"
+            echo "Carrier commit: $GITHUB_SHA"
+            echo "Run: $GITHUB_RUN_ID"
+            echo "Code Dump version: 1.1.0"
+            echo "Application ID: app.codedump.tool"
+            echo "Green implementation patch SHA-256: 93d7f2eda8e7429547cd0cd99810f5b5006e46763eea5ee1a43016f12b640f0e"
+            echo "Green runtime overlay SHA-256: $OVERLAY_TAR_SHA256"
+            echo "Capacitor: 8.5.0"
+            echo "JSZip: 3.10.1"
+            echo "AGP: 8.13.2"
+            echo "Kotlin: 2.3.20"
+            echo "Java: 21"
+            echo "Android: API 36 / Build Tools 36.0.0"
+          } > artifacts/BUILD_INFO.txt
+          (cd artifacts && sha256sum *.apk *.aab BUILD_INFO.txt 2>/dev/null | sort > SHA256SUMS.txt)
+          cat artifacts/SHA256SUMS.txt
+
+      - name: Upload Code Dump Android artefacts
+        if: success()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: code-dump-tool-buildspec-apk-${{ github.run_number }}
+          if-no-files-found: error
+          retention-days: 30
+          path: artifacts/
+
+      - name: Upload Gradle failure evidence
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: code-dump-tool-buildspec-failure-${{ github.run_number }}
+          if-no-files-found: ignore
+          retention-days: 14
+          path: |
+            codedump/android/app/build/reports/
+            codedump/android/app/build/test-results/
+            codedump/android/app/build/outputs/logs/
