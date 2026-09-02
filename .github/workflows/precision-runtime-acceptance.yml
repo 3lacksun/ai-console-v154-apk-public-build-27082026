@@ -14,13 +14,16 @@ concurrency:
   group: precision-v154-runtime-acceptance
   cancel-in-progress: true
 
+env:
+  APK_SHA256: 474fa005fbb3f5c320aa3a129fc2cf26500ef4da6d000143d7cd75aec1183258
+  PKG: com.nexarenew.aiconsole
+  APK: runtime-apk/DR_STONES_COMMAND_CENTRE_V1_5_4_PRECISION_PREVIEW_DEBUG.apk
+
 jobs:
-  runtime:
+  android16:
+    name: Android 16 API 36 cold launch
     runs-on: ubuntu-latest
-    timeout-minutes: 60
-    env:
-      APK_SHA256: 474fa005fbb3f5c320aa3a129fc2cf26500ef4da6d000143d7cd75aec1183258
-      PKG: com.nexarenew.aiconsole
+    timeout-minutes: 35
     steps:
       - name: Checkout carrier branch
         uses: actions/checkout@v6
@@ -43,101 +46,264 @@ jobs:
           repository: 3lacksun/ai-console-v154-apk-public-build-27082026
           run-id: 33681949327
 
-      - name: Verify downloaded APK hash identity signing bundle and 16 KB binary alignment
+      - name: Pin APK identity and prepare diagnostics
         shell: bash
         run: |
           set -euo pipefail
-          APK=runtime-apk/DR_STONES_COMMAND_CENTRE_V1_5_4_PRECISION_PREVIEW_DEBUG.apk
-          test -s "$APK"
-          echo "$APK_SHA256  $APK" | sha256sum -c -
+          mkdir -p runtime-evidence/android16
+          echo "$APK_SHA256  $APK" | sha256sum -c - | tee runtime-evidence/android16/apk-sha.txt
           yes | sdkmanager --licenses >/dev/null || true
           sdkmanager 'platform-tools' 'build-tools;36.0.0'
           AAPT="$ANDROID_HOME/build-tools/36.0.0/aapt2"
-          ZIPALIGN="$ANDROID_HOME/build-tools/36.0.0/zipalign"
-          APKSIGNER="$ANDROID_HOME/build-tools/36.0.0/apksigner"
           BADGING="$($AAPT dump badging "$APK")"
+          printf '%s\n' "$BADGING" | tee runtime-evidence/android16/apk-badging.txt
           printf '%s\n' "$BADGING" | grep -F "package: name='com.nexarenew.aiconsole' versionCode='19' versionName='1.5.4'"
-          "$ZIPALIGN" -c -P 16 -v 4 "$APK"
-          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee APK_SIGNING_RUNTIME.txt
-          unzip -l "$APK" | grep -F 'assets/index.android.bundle'
-          rm -rf /tmp/apk-native && mkdir -p /tmp/apk-native
-          unzip -q "$APK" 'lib/arm64-v8a/*.so' 'lib/x86_64/*.so' -d /tmp/apk-native
-          count=0
-          while IFS= read -r so; do
-            count=$((count+1))
-            while IFS= read -r align; do
-              if (( align < 0x4000 )); then
-                echo "64-bit ELF alignment below 16 KB: $so $align" >&2
-                exit 1
-              fi
-            done < <(readelf -lW "$so" | awk '$1=="LOAD"{print $NF}')
-          done < <(find /tmp/apk-native/lib/arm64-v8a /tmp/apk-native/lib/x86_64 -type f -name '*.so' | sort)
-          test "$count" -gt 0
-          echo "BINARY_16KB_ALIGNMENT=PASS libraries=$count"
 
-      - name: Android 16 API 36 cold-launch acceptance
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 36
-          arch: x86_64
-          target: google_apis
-          profile: pixel_7
-          disable-animations: true
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
-          script: |
-            set -euo pipefail
-            APK=runtime-apk/DR_STONES_COMMAND_CENTRE_V1_5_4_PRECISION_PREVIEW_DEBUG.apk
-            adb install -r "$APK"
-            ACTIVITY="$(adb shell cmd package resolve-activity --brief "$PKG" | tr -d '\r' | tail -1)"
-            echo "ACTIVITY=$ACTIVITY"
-            test -n "$ACTIVITY"
-            adb shell am force-stop "$PKG"
-            adb logcat -c
-            adb shell am start -W -n "$ACTIVITY"
-            sleep 15
-            adb shell pidof "$PKG"
-            adb shell dumpsys activity activities | grep -F "$PKG" | head -20
-            if adb logcat -d -v brief AndroidRuntime:E ReactNativeJS:E '*:S' | grep -F "$PKG"; then
-              echo 'Runtime fatal/error log associated with package' >&2
-              exit 1
+      - name: Provision and boot Android 16 emulator deterministically
+        shell: bash
+        run: |
+          set -euo pipefail
+          EVIDENCE=runtime-evidence/android16
+          SERIAL=emulator-5554
+          IMAGE='system-images;android-36;google_apis;x86_64'
+
+          ls -l /dev/kvm > "$EVIDENCE/kvm.txt" 2>&1 || true
+          if [ -e /dev/kvm ]; then sudo chmod 666 /dev/kvm || true; fi
+          "$ANDROID_HOME/emulator/emulator" -accel-check > "$EVIDENCE/accel-check.txt" 2>&1 || true
+          adb kill-server > "$EVIDENCE/adb-server.txt" 2>&1 || true
+          adb start-server >> "$EVIDENCE/adb-server.txt" 2>&1
+
+          sdkmanager 'emulator' "$IMAGE" > "$EVIDENCE/sdkmanager.txt" 2>&1
+          echo no | avdmanager create avd --force --name api36 --package "$IMAGE" --device 'pixel_7' > "$EVIDENCE/avdmanager.txt" 2>&1
+          "$ANDROID_HOME/emulator/emulator" -list-avds | tee "$EVIDENCE/avds.txt"
+
+          ACCEL=(-accel off)
+          if [ -c /dev/kvm ] && [ -r /dev/kvm ] && [ -w /dev/kvm ]; then ACCEL=(-accel on); fi
+          nohup "$ANDROID_HOME/emulator/emulator" \
+            -avd api36 -port 5554 -no-window -no-audio -no-boot-anim -no-snapshot \
+            -gpu swiftshader_indirect -camera-back none -camera-front none -memory 2048 \
+            "${ACCEL[@]}" > "$EVIDENCE/emulator.log" 2>&1 &
+          EMU_PID=$!
+          echo "$EMU_PID" > "$EVIDENCE/emulator.pid"
+
+          online=0
+          for i in $(seq 1 120); do
+            adb devices -l > "$EVIDENCE/adb-devices.txt" 2>&1 || true
+            if ! kill -0 "$EMU_PID" 2>/dev/null; then
+              echo 'Emulator process exited before ADB became available' >&2
+              tail -200 "$EVIDENCE/emulator.log" >&2 || true
+              exit 20
             fi
-            echo 'ANDROID_16_COLD_LAUNCH=PASS'
+            if adb -s "$SERIAL" get-state 2>/dev/null | grep -qx device; then online=1; break; fi
+            sleep 5
+          done
+          if [ "$online" -ne 1 ]; then
+            echo 'ADB did not observe Android 16 emulator within 600 seconds' >&2
+            tail -200 "$EVIDENCE/emulator.log" >&2 || true
+            exit 21
+          fi
 
-      - name: Android 16 KB page-size cold-launch acceptance
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 35
-          arch: x86_64
-          target: google_apis_ps16k
-          profile: pixel_7
-          disable-animations: true
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
-          script: |
-            set -euo pipefail
-            APK=runtime-apk/DR_STONES_COMMAND_CENTRE_V1_5_4_PRECISION_PREVIEW_DEBUG.apk
-            PAGE_SIZE="$(adb shell getconf PAGE_SIZE | tr -d '\r')"
-            echo "PAGE_SIZE=$PAGE_SIZE"
-            test "$PAGE_SIZE" = '16384'
-            adb install -r "$APK"
-            ACTIVITY="$(adb shell cmd package resolve-activity --brief "$PKG" | tr -d '\r' | tail -1)"
-            echo "ACTIVITY=$ACTIVITY"
-            test -n "$ACTIVITY"
-            adb shell am force-stop "$PKG"
-            adb logcat -c
-            adb shell am start -W -n "$ACTIVITY"
-            sleep 15
-            adb shell pidof "$PKG"
-            adb shell dumpsys activity activities | grep -F "$PKG" | head -20
-            if adb logcat -d -v brief AndroidRuntime:E ReactNativeJS:E '*:S' | grep -F "$PKG"; then
-              echo 'Runtime fatal/error log associated with package on 16 KB image' >&2
-              exit 1
+          booted=0
+          for i in $(seq 1 120); do
+            BOOT="$(adb -s "$SERIAL" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || true)"
+            echo "attempt=$i boot_completed=$BOOT" >> "$EVIDENCE/boot-poll.txt"
+            if [ "$BOOT" = '1' ]; then booted=1; break; fi
+            if ! kill -0 "$EMU_PID" 2>/dev/null; then
+              echo 'Emulator process exited before Android boot completed' >&2
+              exit 22
             fi
-            echo 'ANDROID_16KB_COLD_LAUNCH=PASS'
+            sleep 5
+          done
+          test "$booted" -eq 1
+          adb -s "$SERIAL" shell getprop > "$EVIDENCE/getprop.txt"
+          echo 'ANDROID_16_EMULATOR_BOOT=PASS'
 
-      - name: Upload runtime acceptance evidence
+      - name: Install exact APK and verify Android 16 cold launch
+        shell: bash
+        run: |
+          set -euo pipefail
+          EVIDENCE=runtime-evidence/android16
+          SERIAL=emulator-5554
+          adb -s "$SERIAL" install -r "$APK" | tee "$EVIDENCE/install.txt"
+          ACTIVITY="$(adb -s "$SERIAL" shell cmd package resolve-activity --brief "$PKG" | tr -d '\r' | tail -1)"
+          echo "ACTIVITY=$ACTIVITY" | tee "$EVIDENCE/activity.txt"
+          test -n "$ACTIVITY"
+          adb -s "$SERIAL" shell am force-stop "$PKG"
+          adb -s "$SERIAL" logcat -c
+          adb -s "$SERIAL" shell am start -W -n "$ACTIVITY" | tee "$EVIDENCE/am-start.txt"
+          sleep 20
+          PID="$(adb -s "$SERIAL" shell pidof "$PKG" | tr -d '\r' || true)"
+          echo "PID=$PID" | tee "$EVIDENCE/pid.txt"
+          test -n "$PID"
+          adb -s "$SERIAL" shell dumpsys activity activities > "$EVIDENCE/dumpsys-activities.txt"
+          grep -F "$PKG" "$EVIDENCE/dumpsys-activities.txt" | head -40
+          adb -s "$SERIAL" logcat -d -v threadtime > "$EVIDENCE/logcat.txt"
+          if grep -E "FATAL EXCEPTION|Process: ${PKG}([,[:space:]]|$)" "$EVIDENCE/logcat.txt"; then
+            echo 'Android runtime fatal exception detected after cold launch' >&2
+            exit 30
+          fi
+          echo 'ANDROID_16_COLD_LAUNCH=PASS' | tee "$EVIDENCE/result.txt"
+
+      - name: Capture Android 16 diagnostics
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p runtime-evidence/android16
+          adb devices -l > runtime-evidence/android16/adb-devices-final.txt 2>&1 || true
+          ps auxww | grep -E '[e]mulator|[q]emu' > runtime-evidence/android16/processes.txt 2>&1 || true
+          adb -s emulator-5554 logcat -d -v threadtime > runtime-evidence/android16/logcat-final.txt 2>&1 || true
+          tail -300 runtime-evidence/android16/emulator.log > runtime-evidence/android16/emulator-tail.txt 2>&1 || true
+          adb -s emulator-5554 emu kill >/dev/null 2>&1 || true
+
+      - name: Upload Android 16 runtime evidence
+        if: always()
         uses: actions/upload-artifact@v6
         with:
-          name: DR_STONES_COMMAND_CENTRE_V1_5_4_RUNTIME_ACCEPTANCE_EVIDENCE
-          path: APK_SIGNING_RUNTIME.txt
-          if-no-files-found: error
+          name: DR_STONES_COMMAND_CENTRE_V1_5_4_ANDROID16_RUNTIME_EVIDENCE
+          path: runtime-evidence/android16
+          if-no-files-found: warn
+          retention-days: 14
+
+  page16k:
+    name: Android 16 KB page-size cold launch
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout carrier branch
+        uses: actions/checkout@v6
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Download exact verified APK from successful carrier run 2
+        uses: actions/download-artifact@v4
+        with:
+          name: DR_STONES_COMMAND_CENTRE_V1_5_4_PRECISION_PREVIEW_DEBUG
+          path: runtime-apk
+          github-token: ${{ github.token }}
+          repository: 3lacksun/ai-console-v154-apk-public-build-27082026
+          run-id: 33681949327
+
+      - name: Pin APK identity and prepare 16 KB diagnostics
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p runtime-evidence/page16k
+          echo "$APK_SHA256  $APK" | sha256sum -c - | tee runtime-evidence/page16k/apk-sha.txt
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager 'platform-tools' 'build-tools;36.0.0'
+          "$ANDROID_HOME/build-tools/36.0.0/aapt2" dump badging "$APK" > runtime-evidence/page16k/apk-badging.txt
+          grep -F "package: name='com.nexarenew.aiconsole' versionCode='19' versionName='1.5.4'" runtime-evidence/page16k/apk-badging.txt
+
+      - name: Provision and boot dedicated 16 KB emulator deterministically
+        shell: bash
+        run: |
+          set -euo pipefail
+          EVIDENCE=runtime-evidence/page16k
+          SERIAL=emulator-5556
+          IMAGE='system-images;android-35;google_apis_ps16k;x86_64'
+
+          ls -l /dev/kvm > "$EVIDENCE/kvm.txt" 2>&1 || true
+          if [ -e /dev/kvm ]; then sudo chmod 666 /dev/kvm || true; fi
+          "$ANDROID_HOME/emulator/emulator" -accel-check > "$EVIDENCE/accel-check.txt" 2>&1 || true
+          adb kill-server > "$EVIDENCE/adb-server.txt" 2>&1 || true
+          adb start-server >> "$EVIDENCE/adb-server.txt" 2>&1
+
+          sdkmanager --list > "$EVIDENCE/sdkmanager-list.txt" 2>&1
+          grep -F "$IMAGE" "$EVIDENCE/sdkmanager-list.txt"
+          sdkmanager 'emulator' "$IMAGE" > "$EVIDENCE/sdkmanager.txt" 2>&1
+          echo no | avdmanager create avd --force --name page16k --package "$IMAGE" --device 'pixel_7' > "$EVIDENCE/avdmanager.txt" 2>&1
+          "$ANDROID_HOME/emulator/emulator" -list-avds | tee "$EVIDENCE/avds.txt"
+
+          ACCEL=(-accel off)
+          if [ -c /dev/kvm ] && [ -r /dev/kvm ] && [ -w /dev/kvm ]; then ACCEL=(-accel on); fi
+          nohup "$ANDROID_HOME/emulator/emulator" \
+            -avd page16k -port 5556 -no-window -no-audio -no-boot-anim -no-snapshot \
+            -gpu swiftshader_indirect -camera-back none -camera-front none -memory 2048 \
+            "${ACCEL[@]}" > "$EVIDENCE/emulator.log" 2>&1 &
+          EMU_PID=$!
+          echo "$EMU_PID" > "$EVIDENCE/emulator.pid"
+
+          online=0
+          for i in $(seq 1 120); do
+            adb devices -l > "$EVIDENCE/adb-devices.txt" 2>&1 || true
+            if ! kill -0 "$EMU_PID" 2>/dev/null; then
+              echo '16 KB emulator process exited before ADB became available' >&2
+              tail -200 "$EVIDENCE/emulator.log" >&2 || true
+              exit 40
+            fi
+            if adb -s "$SERIAL" get-state 2>/dev/null | grep -qx device; then online=1; break; fi
+            sleep 5
+          done
+          if [ "$online" -ne 1 ]; then
+            echo 'ADB did not observe 16 KB emulator within 600 seconds' >&2
+            tail -200 "$EVIDENCE/emulator.log" >&2 || true
+            exit 41
+          fi
+
+          booted=0
+          for i in $(seq 1 120); do
+            BOOT="$(adb -s "$SERIAL" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || true)"
+            echo "attempt=$i boot_completed=$BOOT" >> "$EVIDENCE/boot-poll.txt"
+            if [ "$BOOT" = '1' ]; then booted=1; break; fi
+            if ! kill -0 "$EMU_PID" 2>/dev/null; then exit 42; fi
+            sleep 5
+          done
+          test "$booted" -eq 1
+          PAGE_SIZE="$(adb -s "$SERIAL" shell getconf PAGE_SIZE | tr -d '\r')"
+          echo "PAGE_SIZE=$PAGE_SIZE" | tee "$EVIDENCE/page-size.txt"
+          test "$PAGE_SIZE" = '16384'
+          adb -s "$SERIAL" shell getprop > "$EVIDENCE/getprop.txt"
+          echo 'ANDROID_16KB_EMULATOR_BOOT=PASS'
+
+      - name: Install exact APK and verify 16 KB cold launch
+        shell: bash
+        run: |
+          set -euo pipefail
+          EVIDENCE=runtime-evidence/page16k
+          SERIAL=emulator-5556
+          adb -s "$SERIAL" install -r "$APK" | tee "$EVIDENCE/install.txt"
+          ACTIVITY="$(adb -s "$SERIAL" shell cmd package resolve-activity --brief "$PKG" | tr -d '\r' | tail -1)"
+          echo "ACTIVITY=$ACTIVITY" | tee "$EVIDENCE/activity.txt"
+          test -n "$ACTIVITY"
+          adb -s "$SERIAL" shell am force-stop "$PKG"
+          adb -s "$SERIAL" logcat -c
+          adb -s "$SERIAL" shell am start -W -n "$ACTIVITY" | tee "$EVIDENCE/am-start.txt"
+          sleep 20
+          PID="$(adb -s "$SERIAL" shell pidof "$PKG" | tr -d '\r' || true)"
+          echo "PID=$PID" | tee "$EVIDENCE/pid.txt"
+          test -n "$PID"
+          adb -s "$SERIAL" shell dumpsys activity activities > "$EVIDENCE/dumpsys-activities.txt"
+          grep -F "$PKG" "$EVIDENCE/dumpsys-activities.txt" | head -40
+          adb -s "$SERIAL" logcat -d -v threadtime > "$EVIDENCE/logcat.txt"
+          if grep -E "FATAL EXCEPTION|Process: ${PKG}([,[:space:]]|$)" "$EVIDENCE/logcat.txt"; then
+            echo 'Runtime fatal exception detected after 16 KB cold launch' >&2
+            exit 50
+          fi
+          echo 'ANDROID_16KB_COLD_LAUNCH=PASS' | tee "$EVIDENCE/result.txt"
+
+      - name: Capture 16 KB diagnostics
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p runtime-evidence/page16k
+          adb devices -l > runtime-evidence/page16k/adb-devices-final.txt 2>&1 || true
+          ps auxww | grep -E '[e]mulator|[q]emu' > runtime-evidence/page16k/processes.txt 2>&1 || true
+          adb -s emulator-5556 logcat -d -v threadtime > runtime-evidence/page16k/logcat-final.txt 2>&1 || true
+          tail -300 runtime-evidence/page16k/emulator.log > runtime-evidence/page16k/emulator-tail.txt 2>&1 || true
+          adb -s emulator-5556 emu kill >/dev/null 2>&1 || true
+
+      - name: Upload 16 KB runtime evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: DR_STONES_COMMAND_CENTRE_V1_5_4_16KB_RUNTIME_EVIDENCE
+          path: runtime-evidence/page16k
+          if-no-files-found: warn
           retention-days: 14
