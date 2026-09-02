@@ -1,0 +1,26 @@
+{
+  "name": "Code Dump Tool",
+  "short_name": "Code Dump",
+  "description": "Create file-tree-first code dumps and reconstruct files locally, with nested ZIP support and offline-first PWA operation.",
+  "id": "./index.html",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#f7f7ff",
+  "theme_color": "#f7f7ff",
+  "categories": ["developer","productivity","utilities"],
+  "icons": [
+    {"src":"./icons/icon-192.png","sizes":"192x192","type":"image/png","purpose":"any"},
+    {"src":"./icons/icon-512.png","sizes":"512x512","type":"image/png","purpose":"any"},
+    {"src":"./icons/icon-maskable-512.png","sizes":"512x512","type":"image/png","purpose":"maskable"}
+  ],
+  "shortcuts": [
+    {"name":"Extract code dump","short_name":"Extract","url":"./index.html?mode=extract","icons":[{"src":"./icons/icon-192.png","sizes":"192x192","type":"image/png"}]},
+    {"name":"Create code dump","short_name":"Create","url":"./index.html?mode=create","icons":[{"src":"./icons/icon-192.png","sizes":"192x192","type":"image/png"}]}
+  ],
+  "file_handlers": [
+    {"action":"./index.html?mode=create","accept":{"application/zip":[".zip"]}},
+    {"action":"./index.html?mode=extract","accept":{"text/plain":[".txt",".log"],"text/markdown":[".md",".markdown"]}}
+  ]
+}
