@@ -51,7 +51,7 @@ jobs:
         run: |
           set -euo pipefail
           python -m pip install --disable-pip-version-check --quiet gdown
-          gdown --id "$SOURCE_FILE_ID" -O "$SOURCE_ZIP"
+          gdown "$SOURCE_FILE_ID" -O "$SOURCE_ZIP"
           test -s "$SOURCE_ZIP"
           sha256sum "$SOURCE_ZIP" | tee "$EVIDENCE_DIR/source-sha256-actual.txt"
           printf '%s  %s\n' "$SOURCE_SHA256" "$SOURCE_ZIP" > "$SOURCE_ZIP.sha256"
