@@ -29,16 +29,18 @@ jobs:
       - name: Android SDK command-line tools
         uses: android-actions/setup-android@v3
 
-      - name: Install Android API 36 and Build Tools 36.0.0
+      - name: Install Android API 36 and Build Tools 35/36
         shell: bash
         run: |
           set -euo pipefail
           yes | sdkmanager --licenses >/dev/null 2>&1 || true
-          sdkmanager "platforms;android-36" "build-tools;36.0.0"
+          sdkmanager "platforms;android-36" "build-tools;35.0.0" "build-tools;36.0.0"
           test -s "$ANDROID_HOME/platforms/android-36/android.jar"
-          test -x "$ANDROID_HOME/build-tools/36.0.0/aapt2"
-          test -x "$ANDROID_HOME/build-tools/36.0.0/apksigner"
-          test -x "$ANDROID_HOME/build-tools/36.0.0/zipalign"
+          for v in 35.0.0 36.0.0; do
+            test -x "$ANDROID_HOME/build-tools/$v/aapt2"
+            test -x "$ANDROID_HOME/build-tools/$v/apksigner"
+            test -x "$ANDROID_HOME/build-tools/$v/zipalign"
+          done
 
       - name: Resolve exact Capacitor and Android dependency graph
         shell: bash
@@ -97,9 +99,9 @@ jobs:
           set -euo pipefail
           mkdir -p /tmp/turncall-toolchain
           cd "$ANDROID_HOME"
-          tar -czf /tmp/turncall-toolchain/android-sdk36-buildtools36.tar.gz platforms/android-36 build-tools/36.0.0 licenses
-          sha256sum /tmp/turncall-toolchain/android-sdk36-buildtools36.tar.gz > /tmp/turncall-toolchain/android-sdk36-buildtools36.tar.gz.sha256
-          du -h /tmp/turncall-toolchain/android-sdk36-buildtools36.tar.gz
+          tar -czf /tmp/turncall-toolchain/android-sdk36-buildtools35-36.tar.gz platforms/android-36 build-tools/35.0.0 build-tools/36.0.0 licenses
+          sha256sum /tmp/turncall-toolchain/android-sdk36-buildtools35-36.tar.gz > /tmp/turncall-toolchain/android-sdk36-buildtools35-36.tar.gz.sha256
+          du -h /tmp/turncall-toolchain/android-sdk36-buildtools35-36.tar.gz
 
       - name: Package Gradle distribution and dependency cache
         shell: bash
@@ -112,20 +114,20 @@ jobs:
           du -h /tmp/turncall-toolchain/gradle8143-capacitor850-cache.tar.gz
           cat > /tmp/turncall-toolchain/TOOLCHAIN_MANIFEST.txt <<'EOF'
           Generic build toolchain only. No TurnCall application source or credentials are included.
-          Java 21; Node 22; Capacitor 8.5.0; Gradle 8.14.3-all; AGP 8.13.0; Android API 36; Build Tools 36.0.0.
+          Java 21; Node 22; Capacitor 8.5.0; Gradle 8.14.3-all; AGP 8.13.0; Android API 36; Build Tools 35.0.0 and 36.0.0.
           Seed plugins: secure-storage 8.0.0 and Capacitor app/camera/haptics/keyboard/local-notifications/network/preferences/status-bar 8.0.0.
           EOF
 
       - name: Upload Android SDK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: generic-android-sdk36-buildtools36
+          name: generic-android-sdk36-buildtools35-36
           retention-days: 2
           compression-level: 0
           if-no-files-found: error
           path: |
-            /tmp/turncall-toolchain/android-sdk36-buildtools36.tar.gz
-            /tmp/turncall-toolchain/android-sdk36-buildtools36.tar.gz.sha256
+            /tmp/turncall-toolchain/android-sdk36-buildtools35-36.tar.gz
+            /tmp/turncall-toolchain/android-sdk36-buildtools35-36.tar.gz.sha256
             /tmp/turncall-toolchain/TOOLCHAIN_MANIFEST.txt
 
       - name: Upload Gradle cache artifact
