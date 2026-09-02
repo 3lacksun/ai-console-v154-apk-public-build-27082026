@@ -64,7 +64,7 @@ jobs:
           disable-animations: true
           emulator-options: -no-snapshot-load -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
           script: |
-            set -euo pipefail
+            set -eu
             E=runtime-evidence/android16
             mkdir -p "$E"
             adb devices -l | tee "$E/adb-devices.txt"
@@ -150,7 +150,7 @@ jobs:
           disable-animations: true
           emulator-options: -no-snapshot-load -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
           script: |
-            set -euo pipefail
+            set -eu
             E=runtime-evidence/page16k
             mkdir -p "$E"
             adb devices -l | tee "$E/adb-devices.txt"
