@@ -1,0 +1,65 @@
+name: Reseal authoritative integrity manifests
+
+on:
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  reseal:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout authoritative PR head
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.head_ref || github.ref_name }}
+          fetch-depth: 0
+
+      - name: Recompute both checksum manifests fail-closed
+        shell: bash
+        run: |
+          set -euo pipefail
+          for manifest in HANDOVER_SHA256SUMS.txt SHA256SUMS_EXEC002.txt; do
+            test -s "$manifest"
+            tmp="$(mktemp)"
+            while IFS= read -r line || [[ -n "$line" ]]; do
+              [[ -z "$line" ]] && continue
+              expected="${line%%  *}"
+              path="${line#*  }"
+              [[ "$expected" =~ ^[0-9a-f]{64}$ ]] || { echo "Invalid checksum line in $manifest: $line" >&2; exit 1; }
+              test -f "$path" || { echo "Missing manifest target in $manifest: $path" >&2; exit 1; }
+              actual="$(sha256sum -- "$path" | awk '{print $1}')"
+              printf '%s  %s\n' "$actual" "$path" >> "$tmp"
+            done < "$manifest"
+            sort "$tmp" > "$manifest"
+            rm -f "$tmp"
+          done
+
+      - name: Install dependencies
+        run: npm ci --no-fund
+
+      - name: Prove fail-closed integrity before commit
+        run: npm run check
+
+      - name: Show controlled manifest diff
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff -- HANDOVER_SHA256SUMS.txt SHA256SUMS_EXEC002.txt
+          git diff --quiet -- HANDOVER_SHA256SUMS.txt SHA256SUMS_EXEC002.txt && { echo "No checksum changes required"; exit 0; }
+
+      - name: Commit resealed manifests only
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- HANDOVER_SHA256SUMS.txt SHA256SUMS_EXEC002.txt
+          git diff --cached --quiet && exit 0
+          git diff --cached --name-only | grep -Ev '^(HANDOVER_SHA256SUMS\.txt|SHA256SUMS_EXEC002\.txt)$' && { echo "Unexpected staged file" >&2; exit 1; } || true
+          git commit -m "CI: genuinely reseal authoritative checksum manifests"
+          git push origin HEAD:${{ github.head_ref || github.ref_name }}
