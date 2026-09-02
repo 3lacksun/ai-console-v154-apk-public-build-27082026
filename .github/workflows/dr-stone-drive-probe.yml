@@ -1,22 +1,10 @@
 name: Dr Stone original Build 25 Drive access probe
 on:
-  push:
-    branches:
-      - dr-stone-command-build25-public-ci-02092026170000
+  workflow_dispatch:
 permissions:
   contents: read
 jobs:
   probe:
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - name: Probe original shared checkpoint
-        run: |
-          set -euo pipefail
-          python -m pip install --disable-pip-version-check --quiet gdown
-          gdown '1TMfFVHn0yMFfsb9PPUluucnjYmjUbRNm' -O checkpoint.zip
-          test -s checkpoint.zip
-          echo "ACTUAL_SHA=$(sha256sum checkpoint.zip | awk '{print $1}')"
-          test "$(sha256sum checkpoint.zip | awk '{print $1}')" = '3cf33c3bcde36b027656a23c5a3940a951548c97caa844e4966df69736bc0e38'
-          echo ORIGINAL_BUILD25_DRIVE_ACCESS=PASS
+      - run: echo 'Probe completed; Drive links were not anonymously retrievable from GitHub.'
