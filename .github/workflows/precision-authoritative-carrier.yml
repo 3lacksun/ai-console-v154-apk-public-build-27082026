@@ -16,7 +16,7 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
     env:
       CI: "1"
       EXPO_NO_TELEMETRY: "1"
@@ -82,66 +82,46 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          node <<'NODE'
-          const fs = require('fs');
-          const crypto = require('crypto');
-          const targets = [
-            'App.js',
-            'scripts/static-check.mjs',
-            'src/components/DocumentStudio.js',
-            'src/components/FullVoiceScreen.js',
-            'src/components/Icons.js',
-            'src/components/IntelligenceHub.js',
-            'src/components/LLMSettingsSheet.js',
-            'src/components/WorkspaceCommandOverview.js',
-            'src/theme.js',
-            'src/ui/motion.mjs',
-            'src/ui/primitives.js',
-            'src/ui/responsive.mjs',
-            'src/ui/tokens.js',
-            'tests/mobileLayoutSafety.test.mjs',
-            'tests/precision-command-centre.test.mjs',
-          ];
-          const allowed = new Set(targets);
-          const digest = p => crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex');
-          const manifests = ['HANDOVER_SHA256SUMS.txt', 'SHA256SUMS_EXEC002.txt'];
-          for (const manifest of manifests) {
-            if (!fs.existsSync(manifest)) throw new Error(`Missing manifest: ${manifest}`);
-            const original = fs.readFileSync(manifest, 'utf8');
-            const hadFinalNewline = /\r?\n$/.test(original);
-            const input = original.split(/\r?\n/).filter(Boolean);
-            const seen = new Set();
-            const output = [];
-            for (const line of input) {
-              const m = line.match(/^([a-f0-9]{64})  (.+)$/);
-              if (!m) throw new Error(`Invalid checksum manifest line in ${manifest}: ${line}`);
-              const rel = m[2].replace(/^\.\//, '');
-              if (!fs.existsSync(rel)) throw new Error(`${manifest} references missing file: ${rel}`);
-              if (allowed.has(rel)) {
-                output.push(`${digest(rel)}  ${m[2]}`);
-                seen.add(rel);
-              } else {
-                const actual = digest(rel);
-                if (actual !== m[1]) throw new Error(`Unrelated drift in ${manifest}: ${rel}`);
-                output.push(line);
-              }
-            }
-            for (const rel of targets) {
-              if (!seen.has(rel)) {
-                if (!fs.existsSync(rel)) throw new Error(`Audited target missing before manifest append: ${rel}`);
-                output.push(`${digest(rel)}  ${rel}`);
-              }
-            }
-            fs.writeFileSync(manifest, output.join('\n') + (hadFinalNewline ? '\n' : ''));
-            for (const line of output) {
-              const m = line.match(/^([a-f0-9]{64})  (.+)$/);
-              const rel = m[2].replace(/^\.\//, '');
-              if (digest(rel) !== m[1]) throw new Error(`Post-reconciliation mismatch in ${manifest}: ${rel}`);
-            }
-            console.log(`PASS: ${manifest} reconciled only across ${targets.length} audited Precision paths`);
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib
+
+          allowed = {
+              'App.js',
+              'scripts/static-check.mjs',
+              'src/components/DocumentStudio.js',
+              'src/components/FullVoiceScreen.js',
+              'src/components/Icons.js',
+              'src/components/IntelligenceHub.js',
+              'src/components/LLMSettingsSheet.js',
+              'src/components/WorkspaceCommandOverview.js',
+              'src/theme.js',
+              'src/ui/motion.mjs',
+              'src/ui/primitives.js',
+              'src/ui/responsive.mjs',
+              'src/ui/tokens.js',
+              'tests/mobileLayoutSafety.test.mjs',
+              'tests/precision-command-centre.test.mjs',
           }
-          NODE
-          git diff -- HANDOVER_SHA256SUMS.txt SHA256SUMS_EXEC002.txt
+          for manifest_name in ('HANDOVER_SHA256SUMS.txt', 'SHA256SUMS_EXEC002.txt'):
+              manifest = Path(manifest_name)
+              rows = manifest.read_text().splitlines()
+              out = []
+              for row in rows:
+                  if not row:
+                      continue
+                  digest, rel = row.split('  ', 1)
+                  rel = rel.removeprefix('./')
+                  target = Path(rel)
+                  actual = hashlib.sha256(target.read_bytes()).hexdigest()
+                  if actual != digest:
+                      if rel not in allowed:
+                          raise SystemExit(f'Unapproved manifest drift: {manifest_name}: {rel}')
+                      digest = actual
+                  out.append(f'{digest}  {rel}')
+              manifest.write_text('\n'.join(out) + '\n')
+          print('PASS: checksum manifests reconciled only for audited Precision paths')
+          PY
 
       - name: Install baseline dependencies
         run: npm ci
@@ -188,7 +168,7 @@ jobs:
           set -euo pipefail
           ./gradlew app:assembleDebug --no-daemon --max-workers=1 --stacktrace
 
-      - name: Verify APK identity and Android alignment
+      - name: Verify APK identity signing bundle and 16 KB binary alignment
         shell: bash
         run: |
           set -euo pipefail
@@ -196,12 +176,88 @@ jobs:
           test -s "$APK"
           AAPT="$ANDROID_HOME/build-tools/36.0.0/aapt2"
           ZIPALIGN="$ANDROID_HOME/build-tools/36.0.0/zipalign"
+          APKSIGNER="$ANDROID_HOME/build-tools/36.0.0/apksigner"
           BADGING="$($AAPT dump badging "$APK")"
           printf '%s\n' "$BADGING" | head -5
           printf '%s\n' "$BADGING" | grep -F "package: name='com.nexarenew.aiconsole' versionCode='19' versionName='1.5.4'"
           "$ZIPALIGN" -c -P 16 -v 4 "$APK"
+          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee APK_SIGNING.txt
+          unzip -l "$APK" | grep -F 'assets/index.android.bundle'
+          rm -rf /tmp/apk-native && mkdir -p /tmp/apk-native
+          unzip -q "$APK" 'lib/arm64-v8a/*.so' 'lib/x86_64/*.so' -d /tmp/apk-native
+          count=0
+          while IFS= read -r so; do
+            count=$((count+1))
+            while IFS= read -r align; do
+              if (( align < 0x4000 )); then
+                echo "64-bit ELF alignment below 16 KB: $so $align" >&2
+                exit 1
+              fi
+            done < <(readelf -lW "$so" | awk '$1=="LOAD"{print $NF}')
+          done < <(find /tmp/apk-native/lib/arm64-v8a /tmp/apk-native/lib/x86_64 -type f -name '*.so' | sort)
+          test "$count" -gt 0
+          echo "PASS: $count 64-bit native libraries have >=16 KB LOAD alignment"
           sha256sum "$APK" | tee APK_SHA256.txt
           cp "$APK" DR_STONES_COMMAND_CENTRE_V1_5_4_PRECISION_PREVIEW_DEBUG.apk
+
+      - name: Android 16 API 36 cold-launch acceptance
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 36
+          arch: x86_64
+          target: google_apis
+          profile: pixel_7
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
+          script: |
+            set -euo pipefail
+            APK=android/app/build/outputs/apk/debug/app-debug.apk
+            PKG=com.nexarenew.aiconsole
+            adb install -r "$APK"
+            ACTIVITY="$(adb shell cmd package resolve-activity --brief "$PKG" | tr -d '\r' | tail -1)"
+            test -n "$ACTIVITY"
+            adb shell am force-stop "$PKG"
+            adb logcat -c
+            adb shell am start -W -n "$ACTIVITY"
+            sleep 15
+            adb shell pidof "$PKG"
+            adb shell dumpsys activity activities | grep -F "$PKG" | head -20
+            if adb logcat -d -v brief AndroidRuntime:E ReactNativeJS:E '*:S' | grep -F "$PKG"; then
+              echo 'Runtime fatal/error log associated with package' >&2
+              exit 1
+            fi
+            echo 'ANDROID_16_COLD_LAUNCH=PASS'
+
+      - name: Android 16 KB page-size cold-launch acceptance
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis_ps16k
+          profile: pixel_7
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
+          script: |
+            set -euo pipefail
+            APK=android/app/build/outputs/apk/debug/app-debug.apk
+            PKG=com.nexarenew.aiconsole
+            PAGE_SIZE="$(adb shell getconf PAGE_SIZE | tr -d '\r')"
+            echo "PAGE_SIZE=$PAGE_SIZE"
+            test "$PAGE_SIZE" = '16384'
+            adb install -r "$APK"
+            ACTIVITY="$(adb shell cmd package resolve-activity --brief "$PKG" | tr -d '\r' | tail -1)"
+            test -n "$ACTIVITY"
+            adb shell am force-stop "$PKG"
+            adb logcat -c
+            adb shell am start -W -n "$ACTIVITY"
+            sleep 15
+            adb shell pidof "$PKG"
+            adb shell dumpsys activity activities | grep -F "$PKG" | head -20
+            if adb logcat -d -v brief AndroidRuntime:E ReactNativeJS:E '*:S' | grep -F "$PKG"; then
+              echo 'Runtime fatal/error log associated with package on 16 KB image' >&2
+              exit 1
+            fi
+            echo 'ANDROID_16KB_COLD_LAUNCH=PASS'
 
       - name: Upload verified Precision APK
         uses: actions/upload-artifact@v6
@@ -210,5 +266,6 @@ jobs:
           path: |
             DR_STONES_COMMAND_CENTRE_V1_5_4_PRECISION_PREVIEW_DEBUG.apk
             APK_SHA256.txt
+            APK_SIGNING.txt
           if-no-files-found: error
           retention-days: 14
