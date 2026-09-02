@@ -78,6 +78,71 @@ jobs:
           check_blob tests/precision-command-centre.test.mjs 73ed146896156b26fcb987dc411bad5da028d823
           echo 'PASS: all 15 Precision target blobs exact'
 
+      - name: Reconcile checksum manifests for audited Precision paths only
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require('fs');
+          const crypto = require('crypto');
+          const targets = [
+            'App.js',
+            'scripts/static-check.mjs',
+            'src/components/DocumentStudio.js',
+            'src/components/FullVoiceScreen.js',
+            'src/components/Icons.js',
+            'src/components/IntelligenceHub.js',
+            'src/components/LLMSettingsSheet.js',
+            'src/components/WorkspaceCommandOverview.js',
+            'src/theme.js',
+            'src/ui/motion.mjs',
+            'src/ui/primitives.js',
+            'src/ui/responsive.mjs',
+            'src/ui/tokens.js',
+            'tests/mobileLayoutSafety.test.mjs',
+            'tests/precision-command-centre.test.mjs',
+          ];
+          const allowed = new Set(targets);
+          const digest = p => crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex');
+          const manifests = ['HANDOVER_SHA256SUMS.txt', 'SHA256SUMS_EXEC002.txt'];
+          for (const manifest of manifests) {
+            if (!fs.existsSync(manifest)) throw new Error(`Missing manifest: ${manifest}`);
+            const original = fs.readFileSync(manifest, 'utf8');
+            const hadFinalNewline = /\r?\n$/.test(original);
+            const input = original.split(/\r?\n/).filter(Boolean);
+            const seen = new Set();
+            const output = [];
+            for (const line of input) {
+              const m = line.match(/^([a-f0-9]{64})  (.+)$/);
+              if (!m) throw new Error(`Invalid checksum manifest line in ${manifest}: ${line}`);
+              const rel = m[2].replace(/^\.\//, '');
+              if (!fs.existsSync(rel)) throw new Error(`${manifest} references missing file: ${rel}`);
+              if (allowed.has(rel)) {
+                output.push(`${digest(rel)}  ${m[2]}`);
+                seen.add(rel);
+              } else {
+                const actual = digest(rel);
+                if (actual !== m[1]) throw new Error(`Unrelated drift in ${manifest}: ${rel}`);
+                output.push(line);
+              }
+            }
+            for (const rel of targets) {
+              if (!seen.has(rel)) {
+                if (!fs.existsSync(rel)) throw new Error(`Audited target missing before manifest append: ${rel}`);
+                output.push(`${digest(rel)}  ${rel}`);
+              }
+            }
+            fs.writeFileSync(manifest, output.join('\n') + (hadFinalNewline ? '\n' : ''));
+            for (const line of output) {
+              const m = line.match(/^([a-f0-9]{64})  (.+)$/);
+              const rel = m[2].replace(/^\.\//, '');
+              if (digest(rel) !== m[1]) throw new Error(`Post-reconciliation mismatch in ${manifest}: ${rel}`);
+            }
+            console.log(`PASS: ${manifest} reconciled only across ${targets.length} audited Precision paths`);
+          }
+          NODE
+          git diff -- HANDOVER_SHA256SUMS.txt SHA256SUMS_EXEC002.txt
+
       - name: Install baseline dependencies
         run: npm ci
 
