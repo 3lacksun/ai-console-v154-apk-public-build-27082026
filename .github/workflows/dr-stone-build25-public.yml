@@ -1,0 +1,173 @@
+name: Dr Stone Command Build 25 public Android build
+
+on:
+  push:
+    branches:
+      - dr-stone-command-build25-public-ci-02092026170000
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  SOURCE_FILE_ID: "1k-BCi4Pgd6FL65UxNbHtaUQBL1bhdPkr"
+  SOURCE_ZIP: "DR_STONE_COMMAND_V0_3_0_BUILD25_TECHNICAL_CONVERGED_EXTERNAL_GATES_HANDOVER_02092026171445.zip"
+  SOURCE_SHA256: "e24b9cfba2a075a737fc5317f0093acac4661bc5fe760175d214393db3447a44"
+  APK_NAME: "DR_STONE_COMMAND_V0_3_0_BUILD25_DEBUG.apk"
+  EVIDENCE_DIR: "build25-evidence"
+  ANDROID_API_LEVEL: "36"
+  ANDROID_BUILD_TOOLS_VERSION: "36.0.0"
+
+jobs:
+  build-verify:
+    name: Build, lint, unit test and exact APK forensics
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Checkout isolated public build branch
+        uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Android SDK command-line tools
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK 36 prerequisites
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null 2>&1 || true
+          sdkmanager "platform-tools" "platforms;android-${ANDROID_API_LEVEL}" "build-tools;${ANDROID_BUILD_TOOLS_VERSION}"
+          mkdir -p "$EVIDENCE_DIR"
+          java -version 2>&1 | tee "$EVIDENCE_DIR/java-version.txt"
+          sdkmanager --list_installed | tee "$EVIDENCE_DIR/android-sdk-installed.txt"
+
+      - name: Download exact authoritative Build 25 handover from Drive
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check --quiet gdown
+          gdown --id "$SOURCE_FILE_ID" -O "$SOURCE_ZIP"
+          test -s "$SOURCE_ZIP"
+          sha256sum "$SOURCE_ZIP" | tee "$EVIDENCE_DIR/source-sha256-actual.txt"
+          printf '%s  %s\n' "$SOURCE_SHA256" "$SOURCE_ZIP" > "$SOURCE_ZIP.sha256"
+          sha256sum -c "$SOURCE_ZIP.sha256" | tee "$EVIDENCE_DIR/source-sha256-verification.txt"
+          unzip -t "$SOURCE_ZIP" | tee "$EVIDENCE_DIR/source-zip-integrity.txt"
+
+      - name: Extract authoritative source cleanly
+        shell: bash
+        run: |
+          set -euo pipefail
+          SRC_PARENT="$RUNNER_TEMP/dr-stone-build25"
+          rm -rf "$SRC_PARENT"
+          mkdir -p "$SRC_PARENT"
+          unzip -q "$SOURCE_ZIP" -d "$SRC_PARENT"
+          SRC_DIR="$(find "$SRC_PARENT" -maxdepth 2 -name settings.gradle.kts -printf '%h\n' | head -1)"
+          test -n "$SRC_DIR"
+          test -f "$SRC_DIR/app/build.gradle.kts"
+          test -f "$SRC_DIR/app/src/main/AndroidManifest.xml"
+          test -f "$SRC_DIR/gradlew"
+          chmod +x "$SRC_DIR/gradlew"
+          echo "SRC_DIR=$SRC_DIR" >> "$GITHUB_ENV"
+          printf 'SOURCE_ROOT=%s\n' "$SRC_DIR" | tee "$EVIDENCE_DIR/source-root.txt"
+
+      - name: Verify Build 25 source identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$SRC_DIR"
+          {
+            grep -F 'applicationId = "com.nexarenew.drstonecommand"' app/build.gradle.kts
+            grep -F 'compileSdk = 36' app/build.gradle.kts
+            grep -F 'targetSdk = 36' app/build.gradle.kts
+            grep -F 'minSdk = 26' app/build.gradle.kts
+            grep -F 'versionCode = 25' app/build.gradle.kts
+            grep -F 'versionName = "0.3.0"' app/build.gradle.kts
+          } | tee "$GITHUB_WORKSPACE/$EVIDENCE_DIR/source-identity.txt"
+          if find . -type d \( -name build -o -name .gradle \) -print -quit | grep -q .; then
+            echo "FAIL: stale generated build directory present in authoritative source" >&2
+            exit 1
+          fi
+
+      - name: Ensure Kotlin compiler for pure/domain suite
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v kotlinc >/dev/null 2>&1; then
+            curl -fsSL --retry 3 "https://github.com/JetBrains/kotlin/releases/download/v2.1.21/kotlin-compiler-2.1.21.zip" -o "$RUNNER_TEMP/kotlin-compiler.zip"
+            unzip -q "$RUNNER_TEMP/kotlin-compiler.zip" -d "$RUNNER_TEMP/kotlin-compiler"
+            echo "$RUNNER_TEMP/kotlin-compiler/kotlinc/bin" >> "$GITHUB_PATH"
+            export PATH="$RUNNER_TEMP/kotlin-compiler/kotlinc/bin:$PATH"
+          fi
+          kotlinc -version 2>&1 | tee "$EVIDENCE_DIR/kotlinc-version.txt"
+
+      - name: Re-run source verification suites
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$SRC_DIR"
+          bash tools/run-pure-tests.sh 2>&1 | tee "$GITHUB_WORKSPACE/$EVIDENCE_DIR/pure-domain-tests.txt"
+          bash tools/verify-dr-stone-release-contracts.sh 2>&1 | tee "$GITHUB_WORKSPACE/$EVIDENCE_DIR/release-contracts.txt"
+          bash tools/verify-ux-feature-patch.sh 2>&1 | tee "$GITHUB_WORKSPACE/$EVIDENCE_DIR/ux-feature-contracts.txt"
+          bash tools/verify-build-reproducibility.sh 2>&1 | tee "$GITHUB_WORKSPACE/$EVIDENCE_DIR/reproducibility-contracts.txt"
+          bash tools/verify-build25-feature-contracts.sh 2>&1 | tee "$GITHUB_WORKSPACE/$EVIDENCE_DIR/build25-feature-contracts.txt"
+
+      - name: Android unit tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$SRC_DIR"
+          ./gradlew --no-daemon --max-workers=2 testDebugUnitTest 2>&1 | tee "$GITHUB_WORKSPACE/$EVIDENCE_DIR/android-unit-tests.txt"
+
+      - name: Android lint
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$SRC_DIR"
+          ./gradlew --no-daemon --max-workers=2 lintDebug 2>&1 | tee "$GITHUB_WORKSPACE/$EVIDENCE_DIR/android-lint.txt"
+
+      - name: Clean debug APK build
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$SRC_DIR"
+          ./gradlew --no-daemon --max-workers=2 clean assembleDebug 2>&1 | tee "$GITHUB_WORKSPACE/$EVIDENCE_DIR/assemble-debug.txt"
+          APK_SOURCE="app/build/outputs/apk/debug/app-debug.apk"
+          test -s "$APK_SOURCE"
+          cp "$APK_SOURCE" "$GITHUB_WORKSPACE/$APK_NAME"
+          ls -lh "$GITHUB_WORKSPACE/$APK_NAME" | tee "$GITHUB_WORKSPACE/$EVIDENCE_DIR/apk-file.txt"
+
+      - name: Exact APK identity and manifest forensics
+        shell: bash
+        run: |
+          set -euo pipefail
+          BUILD_TOOLS="$ANDROID_HOME/build-tools/$ANDROID_BUILD_TOOLS_VERSION"
+          AAPT="$BUILD_TOOLS/aapt"
+          ZIPALIGN="$BUILD_TOOLS/zipalign"
+          APKSIGNER="$BUILD_TOOLS/apksigner"
+          "$AAPT" dump badging "$APK_NAME" | tee "$EVIDENCE_DIR/apk-badging.txt"
+          grep -F "package: name='com.nexarenew.drstonecommand' versionCode='25' versionName='0.3.0'" "$EVIDENCE_DIR/apk-badging.txt"
+          grep -F "sdkVersion:'26'" "$EVIDENCE_DIR/apk-badging.txt"
+          grep -F "targetSdkVersion:'36'" "$EVIDENCE_DIR/apk-badging.txt"
+          grep -F "application-label:'Dr Stone Command'" "$EVIDENCE_DIR/apk-badging.txt"
+          "$AAPT" dump permissions "$APK_NAME" | tee "$EVIDENCE_DIR/apk-permissions.txt"
+          "$AAPT" dump xmltree "$APK_NAME" AndroidManifest.xml | tee "$EVIDENCE_DIR/apk-manifest-xmltree.txt"
+          "$ZIPALIGN" -c -v 4 "$APK_NAME" 2>&1 | tee "$EVIDENCE_DIR/zipalign.txt"
+          "$APKSIGNER" verify --verbose --print-certs "$APK_NAME" 2>&1 | tee "$EVIDENCE_DIR/apk-signing.txt"
+          sha256sum "$APK_NAME" | tee "$APK_NAME.sha256" | tee "$EVIDENCE_DIR/apk-sha256.txt"
+          stat -c 'APK_SIZE_BYTES=%s' "$APK_NAME" | tee "$EVIDENCE_DIR/apk-size.txt"
+
+      - name: Upload Build 25 APK and evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: dr-stone-command-build25-debug-apk
+          path: |
+            ${{ env.APK_NAME }}
+            ${{ env.APK_NAME }}.sha256
+            ${{ env.EVIDENCE_DIR }}/
+          if-no-files-found: error
+          retention-days: 30
