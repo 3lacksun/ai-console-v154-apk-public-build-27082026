@@ -19,6 +19,14 @@ jobs:
           ref: ${{ github.head_ref || github.ref_name }}
           fetch-depth: 0
 
+      - name: Converge stale Expo asset integrity guard
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -F "pkg.dependencies?.['expo-asset']==='~57.0.15'" scripts/static-check.mjs >/dev/null
+          sed -i "s/pkg.dependencies?.\['expo-asset'\]==='~57\.0\.15'/pkg.dependencies?.['expo-asset']==='~57.0.16'/" scripts/static-check.mjs
+          grep -F "pkg.dependencies?.['expo-asset']==='~57.0.16'" scripts/static-check.mjs >/dev/null
+
       - name: Recompute both checksum manifests fail-closed
         shell: bash
         run: |
@@ -45,21 +53,21 @@ jobs:
       - name: Prove fail-closed integrity before commit
         run: npm run check
 
-      - name: Show controlled manifest diff
+      - name: Show controlled diff
         shell: bash
         run: |
           set -euo pipefail
-          git diff -- HANDOVER_SHA256SUMS.txt SHA256SUMS_EXEC002.txt
-          git diff --quiet -- HANDOVER_SHA256SUMS.txt SHA256SUMS_EXEC002.txt && { echo "No checksum changes required"; exit 0; }
+          git diff -- scripts/static-check.mjs HANDOVER_SHA256SUMS.txt SHA256SUMS_EXEC002.txt
 
-      - name: Commit resealed manifests only
+      - name: Commit converged guard and resealed manifests only
         shell: bash
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -- HANDOVER_SHA256SUMS.txt SHA256SUMS_EXEC002.txt
+          git add -- scripts/static-check.mjs HANDOVER_SHA256SUMS.txt SHA256SUMS_EXEC002.txt
           git diff --cached --quiet && exit 0
-          git diff --cached --name-only | grep -Ev '^(HANDOVER_SHA256SUMS\.txt|SHA256SUMS_EXEC002\.txt)$' && { echo "Unexpected staged file" >&2; exit 1; } || true
-          git commit -m "CI: genuinely reseal authoritative checksum manifests"
+          unexpected="$(git diff --cached --name-only | grep -Ev '^(scripts/static-check\.mjs|HANDOVER_SHA256SUMS\.txt|SHA256SUMS_EXEC002\.txt)$' || true)"
+          [[ -z "$unexpected" ]] || { echo "Unexpected staged file(s): $unexpected" >&2; exit 1; }
+          git commit -m "CI: converge Expo asset guard and reseal integrity"
           git push origin HEAD:${{ github.head_ref || github.ref_name }}
