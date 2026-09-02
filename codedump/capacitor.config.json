@@ -1,0 +1,10 @@
+{
+  "appId": "app.codedump.tool",
+  "appName": "Code Dump Tool",
+  "webDir": "web",
+  "android": {
+    "allowMixedContent": false,
+    "captureInput": true,
+    "webContentsDebuggingEnabled": false
+  }
+}
