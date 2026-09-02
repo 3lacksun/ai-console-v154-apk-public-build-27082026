@@ -1,0 +1,51 @@
+name: Dr Stone Build 25 SDK 35 delta
+
+on:
+  push:
+    branches:
+      - dr-stone-command-build25-public-ci-02092026170000
+    paths:
+      - .github/workflows/dr-stone-build25-sdk35-delta.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package-sdk35:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Ensure Android Build Tools 35.0.0
+        shell: bash
+        run: |
+          set -euo pipefail
+          export ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          export ANDROID_SDK_ROOT="$ANDROID_HOME"
+          export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$PATH"
+          yes | sdkmanager --licenses >/dev/null 2>&1 || true
+          sdkmanager "build-tools;35.0.0"
+          test -x "$ANDROID_HOME/build-tools/35.0.0/aapt"
+          test -x "$ANDROID_HOME/build-tools/35.0.0/zipalign"
+          test -f "$ANDROID_HOME/build-tools/35.0.0/apksigner"
+      - name: Package SDK delta
+        shell: bash
+        run: |
+          set -euo pipefail
+          export ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          mkdir -p sdk35-delta/build-tools
+          cp -a "$ANDROID_HOME/build-tools/35.0.0" sdk35-delta/build-tools/
+          tar -czf dr-stone-build25-sdk35-delta.tar.gz sdk35-delta
+          sha256sum dr-stone-build25-sdk35-delta.tar.gz > dr-stone-build25-sdk35-delta.tar.gz.sha256
+          cat dr-stone-build25-sdk35-delta.tar.gz.sha256
+          ls -lh dr-stone-build25-sdk35-delta.tar.gz
+      - name: Upload SDK delta
+        uses: actions/upload-artifact@v4
+        with:
+          name: dr-stone-build25-sdk35-delta
+          path: |
+            dr-stone-build25-sdk35-delta.tar.gz
+            dr-stone-build25-sdk35-delta.tar.gz.sha256
+          if-no-files-found: error
+          retention-days: 3
