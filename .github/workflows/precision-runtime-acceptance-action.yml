@@ -47,12 +47,43 @@ jobs:
           github-token: ${{ github.token }}
           repository: 3lacksun/ai-console-v154-apk-public-build-27082026
           run-id: 33681949327
-      - name: Pin Android 16 APK SHA
+      - name: Pin Android 16 APK SHA and prepare runtime script
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p runtime-evidence/android16
           echo "$APK_SHA256  $APK" | sha256sum -c - | tee runtime-evidence/android16/apk-sha.txt
+          cat > /tmp/android16-runtime.sh <<'EOF'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          E=runtime-evidence/android16
+          mkdir -p "$E"
+          adb devices -l | tee "$E/adb-devices.txt"
+          adb shell getprop ro.build.version.release | tee "$E/android-release.txt"
+          adb shell getprop ro.build.version.sdk | tee "$E/android-sdk.txt"
+          test "$(adb shell getprop ro.build.version.sdk | tr -d '\r')" = '36'
+          adb install -r "$APK" | tee "$E/install.txt"
+          grep -q '^Success' "$E/install.txt"
+          A="$(adb shell cmd package resolve-activity --brief "$PKG" | tr -d '\r' | tail -1)"
+          echo "ACTIVITY=$A" | tee "$E/activity.txt"
+          test -n "$A"
+          adb shell am force-stop "$PKG"
+          adb logcat -c
+          adb shell am start -W -n "$A" | tee "$E/am-start.txt"
+          sleep 20
+          P="$(adb shell pidof "$PKG" | tr -d '\r' || true)"
+          echo "PID=$P" | tee "$E/pid.txt"
+          test -n "$P"
+          adb shell dumpsys activity activities > "$E/activities.txt"
+          grep -F "$PKG" "$E/activities.txt" | head -40
+          adb logcat -d -v threadtime > "$E/logcat.txt" || true
+          if grep -E "FATAL EXCEPTION|Process: ${PKG}([,[:space:]]|$)" "$E/logcat.txt"; then
+            echo 'Android runtime fatal exception detected' >&2
+            exit 30
+          fi
+          echo 'ANDROID_16_COLD_LAUNCH=PASS' | tee "$E/result.txt"
+          EOF
+          chmod +x /tmp/android16-runtime.sh
       - name: Android 16 API 36 cold launch
         uses: ReactiveCircus/android-emulator-runner@v2
         with:
@@ -63,33 +94,7 @@ jobs:
           emulator-boot-timeout: 600
           disable-animations: true
           emulator-options: -no-snapshot-load -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
-          script: |
-            set -eu
-            E=runtime-evidence/android16
-            mkdir -p "$E"
-            adb devices -l | tee "$E/adb-devices.txt"
-            adb shell getprop ro.build.version.release | tee "$E/android-release.txt"
-            adb shell getprop ro.build.version.sdk | tee "$E/android-sdk.txt"
-            test "$(adb shell getprop ro.build.version.sdk | tr -d '\r')" = '36'
-            adb install -r "$APK" | tee "$E/install.txt"
-            A="$(adb shell cmd package resolve-activity --brief "$PKG" | tr -d '\r' | tail -1)"
-            echo "ACTIVITY=$A" | tee "$E/activity.txt"
-            test -n "$A"
-            adb shell am force-stop "$PKG"
-            adb logcat -c
-            adb shell am start -W -n "$A" | tee "$E/am-start.txt"
-            sleep 20
-            P="$(adb shell pidof "$PKG" | tr -d '\r' || true)"
-            echo "PID=$P" | tee "$E/pid.txt"
-            test -n "$P"
-            adb shell dumpsys activity activities > "$E/activities.txt"
-            grep -F "$PKG" "$E/activities.txt" | head -40
-            adb logcat -d -v threadtime > "$E/logcat.txt" || true
-            if grep -E "FATAL EXCEPTION|Process: ${PKG}([,[:space:]]|$)" "$E/logcat.txt"; then
-              echo 'Android runtime fatal exception detected' >&2
-              exit 30
-            fi
-            echo 'ANDROID_16_COLD_LAUNCH=PASS' | tee "$E/result.txt"
+          script: bash /tmp/android16-runtime.sh
       - name: Capture Android 16 final diagnostics
         if: always()
         shell: bash
@@ -133,12 +138,45 @@ jobs:
           github-token: ${{ github.token }}
           repository: 3lacksun/ai-console-v154-apk-public-build-27082026
           run-id: 33681949327
-      - name: Pin 16 KB APK SHA
+      - name: Pin 16 KB APK SHA and prepare runtime script
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p runtime-evidence/page16k
           echo "$APK_SHA256  $APK" | sha256sum -c - | tee runtime-evidence/page16k/apk-sha.txt
+          cat > /tmp/page16k-runtime.sh <<'EOF'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          E=runtime-evidence/page16k
+          mkdir -p "$E"
+          adb devices -l | tee "$E/adb-devices.txt"
+          PAGE="$(adb shell getconf PAGE_SIZE | tr -d '\r')"
+          echo "PAGE_SIZE=$PAGE" | tee "$E/page-size.txt"
+          test "$PAGE" = '16384'
+          adb shell getprop ro.build.version.release | tee "$E/android-release.txt"
+          adb shell getprop ro.build.version.sdk | tee "$E/android-sdk.txt"
+          adb install -r "$APK" | tee "$E/install.txt"
+          grep -q '^Success' "$E/install.txt"
+          A="$(adb shell cmd package resolve-activity --brief "$PKG" | tr -d '\r' | tail -1)"
+          echo "ACTIVITY=$A" | tee "$E/activity.txt"
+          test -n "$A"
+          adb shell am force-stop "$PKG"
+          adb logcat -c
+          adb shell am start -W -n "$A" | tee "$E/am-start.txt"
+          sleep 20
+          P="$(adb shell pidof "$PKG" | tr -d '\r' || true)"
+          echo "PID=$P" | tee "$E/pid.txt"
+          test -n "$P"
+          adb shell dumpsys activity activities > "$E/activities.txt"
+          grep -F "$PKG" "$E/activities.txt" | head -40
+          adb logcat -d -v threadtime > "$E/logcat.txt" || true
+          if grep -E "FATAL EXCEPTION|Process: ${PKG}([,[:space:]]|$)" "$E/logcat.txt"; then
+            echo '16 KB runtime fatal exception detected' >&2
+            exit 50
+          fi
+          echo 'ANDROID_16KB_COLD_LAUNCH=PASS' | tee "$E/result.txt"
+          EOF
+          chmod +x /tmp/page16k-runtime.sh
       - name: Android API 35 dedicated 16 KB cold launch
         uses: ReactiveCircus/android-emulator-runner@v2
         with:
@@ -149,35 +187,7 @@ jobs:
           emulator-boot-timeout: 600
           disable-animations: true
           emulator-options: -no-snapshot-load -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
-          script: |
-            set -eu
-            E=runtime-evidence/page16k
-            mkdir -p "$E"
-            adb devices -l | tee "$E/adb-devices.txt"
-            PAGE="$(adb shell getconf PAGE_SIZE | tr -d '\r')"
-            echo "PAGE_SIZE=$PAGE" | tee "$E/page-size.txt"
-            test "$PAGE" = '16384'
-            adb shell getprop ro.build.version.release | tee "$E/android-release.txt"
-            adb shell getprop ro.build.version.sdk | tee "$E/android-sdk.txt"
-            adb install -r "$APK" | tee "$E/install.txt"
-            A="$(adb shell cmd package resolve-activity --brief "$PKG" | tr -d '\r' | tail -1)"
-            echo "ACTIVITY=$A" | tee "$E/activity.txt"
-            test -n "$A"
-            adb shell am force-stop "$PKG"
-            adb logcat -c
-            adb shell am start -W -n "$A" | tee "$E/am-start.txt"
-            sleep 20
-            P="$(adb shell pidof "$PKG" | tr -d '\r' || true)"
-            echo "PID=$P" | tee "$E/pid.txt"
-            test -n "$P"
-            adb shell dumpsys activity activities > "$E/activities.txt"
-            grep -F "$PKG" "$E/activities.txt" | head -40
-            adb logcat -d -v threadtime > "$E/logcat.txt" || true
-            if grep -E "FATAL EXCEPTION|Process: ${PKG}([,[:space:]]|$)" "$E/logcat.txt"; then
-              echo '16 KB runtime fatal exception detected' >&2
-              exit 50
-            fi
-            echo 'ANDROID_16KB_COLD_LAUNCH=PASS' | tee "$E/result.txt"
+          script: bash /tmp/page16k-runtime.sh
       - name: Capture 16 KB final diagnostics
         if: always()
         shell: bash
