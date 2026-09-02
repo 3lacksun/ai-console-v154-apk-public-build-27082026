@@ -1,0 +1,247 @@
+name: Precision v1.5.4 Runtime Acceptance KVM
+
+on:
+  push:
+    branches:
+      - precision-authoritative-apk-02092026
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: precision-v154-runtime-kvm
+  cancel-in-progress: true
+
+env:
+  APK_SHA256: 474fa005fbb3f5c320aa3a129fc2cf26500ef4da6d000143d7cd75aec1183258
+  PKG: com.nexarenew.aiconsole
+  APK: runtime-apk/DR_STONES_COMMAND_CENTRE_V1_5_4_PRECISION_PREVIEW_DEBUG.apk
+
+jobs:
+  android16:
+    name: Android 16 API 36 KVM cold launch
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Enable KVM permissions
+        shell: bash
+        run: |
+          set -euxo pipefail
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules || true
+          sudo udevadm trigger --name-match=kvm || true
+          sudo chmod 666 /dev/kvm 2>/dev/null || true
+          ls -l /dev/kvm || true
+      - name: Download exact APK
+        uses: actions/download-artifact@v4
+        with:
+          name: DR_STONES_COMMAND_CENTRE_V1_5_4_PRECISION_PREVIEW_DEBUG
+          path: runtime-apk
+          github-token: ${{ github.token }}
+          repository: 3lacksun/ai-console-v154-apk-public-build-27082026
+          run-id: 33681949327
+      - name: Verify APK and boot Android 16
+        shell: bash
+        run: |
+          set -euo pipefail
+          E=runtime-evidence/android16
+          mkdir -p "$E"
+          echo "$APK_SHA256  $APK" | sha256sum -c - | tee "$E/apk-sha.txt"
+          yes | sdkmanager --licenses >/dev/null || true
+          IMAGE='system-images;android-36;google_apis;x86_64'
+          sdkmanager 'platform-tools' 'emulator' "$IMAGE" > "$E/sdkmanager.txt" 2>&1
+          echo no | avdmanager create avd --force --name runtime36 --package "$IMAGE" > "$E/avdmanager.txt" 2>&1
+          "$ANDROID_HOME/emulator/emulator" -accel-check > "$E/accel-check.txt" 2>&1 || true
+          adb kill-server > "$E/adb-server.txt" 2>&1 || true
+          adb start-server >> "$E/adb-server.txt" 2>&1
+          nohup "$ANDROID_HOME/emulator/emulator" -avd runtime36 -port 5554 \
+            -no-window -no-audio -no-boot-anim -no-snapshot -wipe-data \
+            -gpu swiftshader_indirect -camera-back none -camera-front none -memory 2048 \
+            > "$E/emulator.log" 2>&1 &
+          EPID=$!
+          echo "$EPID" > "$E/emulator.pid"
+          online=0
+          for i in $(seq 1 120); do
+            timeout 5 adb devices -l > "$E/adb-devices.txt" 2>&1 || true
+            if ! kill -0 "$EPID" 2>/dev/null; then
+              echo 'EMULATOR_PROCESS_EXITED=1' | tee "$E/result.txt"
+              tail -200 "$E/emulator.log" >&2 || true
+              exit 20
+            fi
+            if timeout 5 adb -s emulator-5554 get-state 2>/dev/null | grep -qx device; then online=1; break; fi
+            sleep 5
+          done
+          test "$online" -eq 1
+          booted=0
+          for i in $(seq 1 120); do
+            B="$(timeout 5 adb -s emulator-5554 shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || true)"
+            echo "$i $B" >> "$E/boot-poll.txt"
+            if [ "$B" = 1 ]; then booted=1; break; fi
+            kill -0 "$EPID" 2>/dev/null || exit 21
+            sleep 5
+          done
+          test "$booted" -eq 1
+          timeout 10 adb -s emulator-5554 shell getprop > "$E/getprop.txt"
+          echo 'ANDROID_16_EMULATOR_BOOT=PASS' | tee "$E/boot-result.txt"
+      - name: Install and cold launch Android 16
+        shell: bash
+        run: |
+          set -euo pipefail
+          E=runtime-evidence/android16
+          timeout 60 adb -s emulator-5554 install -r "$APK" | tee "$E/install.txt"
+          A="$(timeout 10 adb -s emulator-5554 shell cmd package resolve-activity --brief "$PKG" | tr -d '\r' | tail -1)"
+          echo "ACTIVITY=$A" | tee "$E/activity.txt"
+          test -n "$A"
+          timeout 10 adb -s emulator-5554 shell am force-stop "$PKG"
+          timeout 10 adb -s emulator-5554 logcat -c
+          timeout 30 adb -s emulator-5554 shell am start -W -n "$A" | tee "$E/am-start.txt"
+          sleep 20
+          P="$(timeout 10 adb -s emulator-5554 shell pidof "$PKG" | tr -d '\r' || true)"
+          echo "PID=$P" | tee "$E/pid.txt"
+          test -n "$P"
+          timeout 15 adb -s emulator-5554 shell dumpsys activity activities > "$E/activities.txt"
+          grep -F "$PKG" "$E/activities.txt" | head -40
+          timeout 20 adb -s emulator-5554 logcat -d -v threadtime > "$E/logcat.txt" || true
+          if grep -E "FATAL EXCEPTION|Process: ${PKG}([,[:space:]]|$)" "$E/logcat.txt"; then exit 30; fi
+          echo 'ANDROID_16_COLD_LAUNCH=PASS' | tee "$E/result.txt"
+      - name: Capture Android 16 diagnostics
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p runtime-evidence/android16
+          timeout 5 adb devices -l > runtime-evidence/android16/adb-devices-final.txt 2>&1 || true
+          ps auxww | grep -E '[e]mulator|[q]emu' > runtime-evidence/android16/processes.txt 2>&1 || true
+          timeout 10 adb -s emulator-5554 logcat -d -v threadtime > runtime-evidence/android16/logcat-final.txt 2>&1 || true
+          tail -300 runtime-evidence/android16/emulator.log > runtime-evidence/android16/emulator-tail.txt 2>&1 || true
+          timeout 5 adb -s emulator-5554 emu kill >/dev/null 2>&1 || true
+      - name: Upload Android 16 evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: DR_STONES_COMMAND_CENTRE_V1_5_4_ANDROID16_KVM_EVIDENCE
+          path: runtime-evidence/android16
+          if-no-files-found: warn
+          retention-days: 14
+
+  page16k:
+    name: Android 15 API 35 16 KB KVM cold launch
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Enable KVM permissions
+        shell: bash
+        run: |
+          set -euxo pipefail
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules || true
+          sudo udevadm trigger --name-match=kvm || true
+          sudo chmod 666 /dev/kvm 2>/dev/null || true
+          ls -l /dev/kvm || true
+      - name: Download exact APK
+        uses: actions/download-artifact@v4
+        with:
+          name: DR_STONES_COMMAND_CENTRE_V1_5_4_PRECISION_PREVIEW_DEBUG
+          path: runtime-apk
+          github-token: ${{ github.token }}
+          repository: 3lacksun/ai-console-v154-apk-public-build-27082026
+          run-id: 33681949327
+      - name: Verify APK and boot dedicated 16 KB image
+        shell: bash
+        run: |
+          set -euo pipefail
+          E=runtime-evidence/page16k
+          mkdir -p "$E"
+          echo "$APK_SHA256  $APK" | sha256sum -c - | tee "$E/apk-sha.txt"
+          yes | sdkmanager --licenses >/dev/null || true
+          IMAGE='system-images;android-35;google_apis_ps16k;x86_64'
+          sdkmanager --list > "$E/sdkmanager-list.txt" 2>&1
+          grep -F "$IMAGE" "$E/sdkmanager-list.txt"
+          sdkmanager 'platform-tools' 'emulator' "$IMAGE" > "$E/sdkmanager.txt" 2>&1
+          echo no | avdmanager create avd --force --name runtime16k --package "$IMAGE" > "$E/avdmanager.txt" 2>&1
+          "$ANDROID_HOME/emulator/emulator" -accel-check > "$E/accel-check.txt" 2>&1 || true
+          adb kill-server > "$E/adb-server.txt" 2>&1 || true
+          adb start-server >> "$E/adb-server.txt" 2>&1
+          nohup "$ANDROID_HOME/emulator/emulator" -avd runtime16k -port 5554 \
+            -no-window -no-audio -no-boot-anim -no-snapshot -wipe-data \
+            -gpu swiftshader_indirect -camera-back none -camera-front none -memory 2048 \
+            > "$E/emulator.log" 2>&1 &
+          EPID=$!
+          echo "$EPID" > "$E/emulator.pid"
+          online=0
+          for i in $(seq 1 120); do
+            timeout 5 adb devices -l > "$E/adb-devices.txt" 2>&1 || true
+            if ! kill -0 "$EPID" 2>/dev/null; then
+              echo 'EMULATOR_PROCESS_EXITED=1' | tee "$E/result.txt"
+              tail -200 "$E/emulator.log" >&2 || true
+              exit 40
+            fi
+            if timeout 5 adb -s emulator-5554 get-state 2>/dev/null | grep -qx device; then online=1; break; fi
+            sleep 5
+          done
+          test "$online" -eq 1
+          booted=0
+          for i in $(seq 1 120); do
+            B="$(timeout 5 adb -s emulator-5554 shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || true)"
+            echo "$i $B" >> "$E/boot-poll.txt"
+            if [ "$B" = 1 ]; then booted=1; break; fi
+            kill -0 "$EPID" 2>/dev/null || exit 41
+            sleep 5
+          done
+          test "$booted" -eq 1
+          PAGE="$(timeout 10 adb -s emulator-5554 shell getconf PAGE_SIZE | tr -d '\r')"
+          echo "PAGE_SIZE=$PAGE" | tee "$E/page-size.txt"
+          test "$PAGE" = 16384
+          echo 'ANDROID_16KB_EMULATOR_BOOT=PASS' | tee "$E/boot-result.txt"
+      - name: Install and cold launch on 16 KB image
+        shell: bash
+        run: |
+          set -euo pipefail
+          E=runtime-evidence/page16k
+          timeout 60 adb -s emulator-5554 install -r "$APK" | tee "$E/install.txt"
+          A="$(timeout 10 adb -s emulator-5554 shell cmd package resolve-activity --brief "$PKG" | tr -d '\r' | tail -1)"
+          echo "ACTIVITY=$A" | tee "$E/activity.txt"
+          test -n "$A"
+          timeout 10 adb -s emulator-5554 shell am force-stop "$PKG"
+          timeout 10 adb -s emulator-5554 logcat -c
+          timeout 30 adb -s emulator-5554 shell am start -W -n "$A" | tee "$E/am-start.txt"
+          sleep 20
+          P="$(timeout 10 adb -s emulator-5554 shell pidof "$PKG" | tr -d '\r' || true)"
+          echo "PID=$P" | tee "$E/pid.txt"
+          test -n "$P"
+          timeout 15 adb -s emulator-5554 shell dumpsys activity activities > "$E/activities.txt"
+          grep -F "$PKG" "$E/activities.txt" | head -40
+          timeout 20 adb -s emulator-5554 logcat -d -v threadtime > "$E/logcat.txt" || true
+          if grep -E "FATAL EXCEPTION|Process: ${PKG}([,[:space:]]|$)" "$E/logcat.txt"; then exit 50; fi
+          echo 'ANDROID_16KB_COLD_LAUNCH=PASS' | tee "$E/result.txt"
+      - name: Capture 16 KB diagnostics
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p runtime-evidence/page16k
+          timeout 5 adb devices -l > runtime-evidence/page16k/adb-devices-final.txt 2>&1 || true
+          ps auxww | grep -E '[e]mulator|[q]emu' > runtime-evidence/page16k/processes.txt 2>&1 || true
+          timeout 10 adb -s emulator-5554 logcat -d -v threadtime > runtime-evidence/page16k/logcat-final.txt 2>&1 || true
+          tail -300 runtime-evidence/page16k/emulator.log > runtime-evidence/page16k/emulator-tail.txt 2>&1 || true
+          timeout 5 adb -s emulator-5554 emu kill >/dev/null 2>&1 || true
+      - name: Upload 16 KB evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: DR_STONES_COMMAND_CENTRE_V1_5_4_16KB_KVM_EVIDENCE
+          path: runtime-evidence/page16k
+          if-no-files-found: warn
+          retention-days: 14
