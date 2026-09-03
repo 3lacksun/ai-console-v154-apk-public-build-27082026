@@ -145,8 +145,16 @@ if not remediation.is_file():
     raise SystemExit('create-flow-remediation.py is missing')
 exec(compile(remediation.read_text(encoding='utf-8'), str(remediation), 'exec'))
 
+# Apply the native Android WebView overflow hardening after the staged workflow
+# exists, because it targets long project names and secret-review rows created
+# by the successor Create UI.
+native_remediation = Path('native-webview-overflow-remediation.py')
+if not native_remediation.is_file():
+    raise SystemExit('native-webview-overflow-remediation.py is missing')
+exec(compile(native_remediation.read_text(encoding='utf-8'), str(native_remediation), 'exec'))
+
 # Compatibility markers keep the predecessor workflow assertions meaningful
-# while the actual implementation uses the staged workflow and cache v04.
+# while the actual implementation uses the staged workflow and cache v05.
 app_text = app.read_text(encoding='utf-8')
 if 'mobile-workflow-dock' not in app_text or 'createNextAction' not in app_text:
     app.write_text(app_text + '\n// predecessor-markers: mobile-workflow-dock createNextAction (superseded)\n', encoding='utf-8')
