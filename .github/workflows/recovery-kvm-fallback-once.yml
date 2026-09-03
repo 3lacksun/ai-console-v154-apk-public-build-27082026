@@ -1,0 +1,162 @@
+name: Recovery KVM Fallback Repair Once
+
+on:
+  push:
+    branches:
+      - ux-regression-recovery-03092026
+    paths:
+      - .github/workflows/recovery-kvm-fallback-once.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Checkout exact recovery branch
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ux-regression-recovery-03092026
+          fetch-depth: 1
+
+      - name: Set up Node 24
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Patch emulator acceleration fail-closed fallback only
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('.github/workflows/android-apk.yml')
+          text = path.read_text(encoding='utf-8')
+
+          old = '''      - name: Enable KVM access for Android emulators
+        if: ${{ env.RUN_EMULATOR_CHECKS == 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -e /dev/kvm
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          test -r /dev/kvm -a -w /dev/kvm
+'''
+          new = '''      - name: Select Android emulator acceleration safely
+        if: ${{ env.RUN_EMULATOR_CHECKS == 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$DIAGNOSTICS_DIR"
+          ls -l /dev/kvm > "$DIAGNOSTICS_DIR/kvm.txt" 2>&1 || true
+          if [[ -e /dev/kvm ]]; then sudo chmod 666 /dev/kvm || true; fi
+          "$ANDROID_HOME/emulator/emulator" -accel-check > "$DIAGNOSTICS_DIR/emulator-accel-check.txt" 2>&1 || true
+          mode=off
+          if [[ -c /dev/kvm && -r /dev/kvm && -w /dev/kvm ]]; then mode=on; fi
+          echo "EMULATOR_ACCEL_MODE=$mode" | tee "$DIAGNOSTICS_DIR/emulator-accel-mode.txt"
+          echo "EMULATOR_ACCEL_MODE=$mode" >> "$GITHUB_ENV"
+'''
+          if old not in text:
+              raise SystemExit('expected KVM block not found; refusing broad rewrite')
+          text = text.replace(old, new, 1)
+
+          needle = '-no-window -no-audio -no-boot-anim -no-snapshot -accel on -gpu swiftshader_indirect'
+          replacement = '-no-window -no-audio -no-boot-anim -no-snapshot -accel "$EMULATOR_ACCEL_MODE" -gpu swiftshader_indirect'
+          count = text.count(needle)
+          if count != 2:
+              raise SystemExit(f'expected exactly two emulator acceleration launch sites, found {count}')
+          text = text.replace(needle, replacement)
+          path.write_text(text, encoding='utf-8')
+          PY
+          git diff --check -- .github/workflows/android-apk.yml
+          git diff -- .github/workflows/android-apk.yml
+
+      - name: Recalculate existing recovery integrity seals
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib, re
+
+          manifests = [Path('HANDOVER_SHA256SUMS.txt'), Path('SHA256SUMS_EXEC002.txt')]
+          pattern = re.compile(r'^([0-9a-fA-F]{64})(\s+)(.+)$')
+          for manifest in manifests:
+              if not manifest.is_file():
+                  raise SystemExit(f'missing integrity manifest: {manifest}')
+              output = []
+              for line_no, raw in enumerate(manifest.read_text(encoding='utf-8').splitlines(), 1):
+                  if not raw.strip() or raw.lstrip().startswith('#'):
+                      output.append(raw)
+                      continue
+                  m = pattern.match(raw)
+                  if not m:
+                      raise SystemExit(f'{manifest}:{line_no}: malformed checksum line')
+                  target = Path(m.group(3))
+                  if not target.is_file():
+                      raise SystemExit(f'{manifest}:{line_no}: sealed file missing: {target}')
+                  output.append(f'{hashlib.sha256(target.read_bytes()).hexdigest()}  {m.group(3)}')
+              manifest.write_text('\n'.join(output) + '\n', encoding='utf-8')
+          PY
+
+      - name: Verify recovery source and regression gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci --no-fund
+          npm run check
+          npm test 2>&1 | tee /tmp/npm-test.txt
+          grep -F 'ℹ tests 149' /tmp/npm-test.txt
+          grep -F 'ℹ pass 149' /tmp/npm-test.txt
+          grep -F 'ℹ fail 0' /tmp/npm-test.txt
+          grep -F 'ℹ skipped 0' /tmp/npm-test.txt
+          grep -F 'legacy PIN gate and throttle startup behaviour cannot reappear' /tmp/npm-test.txt
+          grep -F 'normal startup remains unlocked unless optional app lock is enabled and due' /tmp/npm-test.txt
+          grep -F 'optional device-authentication app-lock controls remain available in settings' /tmp/npm-test.txt
+          grep -F 'protected AI settings use device authentication rather than a PIN modal' /tmp/npm-test.txt
+
+      - name: Restrict and commit repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          changed="$(git diff --name-only | sort)"
+          printf '%s\n' "$changed"
+          unexpected="$(printf '%s\n' "$changed" | grep -Ev '^(\.github/workflows/android-apk\.yml|HANDOVER_SHA256SUMS\.txt|SHA256SUMS_EXEC002\.txt)$' || true)"
+          if [[ -n "$unexpected" ]]; then
+            echo 'Unexpected recovery changes detected:' >&2
+            printf '%s\n' "$unexpected" >&2
+            exit 1
+          fi
+          grep -F 'EMULATOR_ACCEL_MODE=$mode' .github/workflows/android-apk.yml
+          test "$(grep -F -- '-accel "$EMULATOR_ACCEL_MODE"' .github/workflows/android-apk.yml | wc -l)" -eq 2
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .github/workflows/android-apk.yml HANDOVER_SHA256SUMS.txt SHA256SUMS_EXEC002.txt
+          git commit -m 'CI: allow emulator software-acceleration fallback'
+          git push origin HEAD:ux-regression-recovery-03092026
+
+      - name: Dispatch exact repaired recovery APK acceptance
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          payload='{"ref":"ux-regression-recovery-03092026","inputs":{"signing_mode":"preview","run_emulator_checks":"true","publish_diagnostic_artifact":"false"}}'
+          curl --fail-with-body \
+            -X POST \
+            -H 'Accept: application/vnd.github+json' \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/$REPOSITORY/actions/workflows/android-apk.yml/dispatches" \
+            -d "$payload"
+          echo 'RECOVERY_KVM_REPAIR_DISPATCH=PASS'
