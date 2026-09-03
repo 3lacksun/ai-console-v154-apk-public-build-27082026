@@ -1,0 +1,59 @@
+name: Precision Post-Patch UI Source Snapshot
+
+on:
+  push:
+    branches:
+      - precision-command-centre-apk-public-03092026
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+
+      - name: Reconstruct and apply exact Precision patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat .ci/precision-patch-xz/part-00.b64 \
+              .ci/precision-patch-xz/part-01.b64 \
+              .ci/precision-patch-xz/part-02.b64 \
+              .ci/precision-patch-xz/part-03.b64 > /tmp/precision-patch.xz.b64
+          printf '%s  %s\n' 'd2ccfbac15fbcfe01189c94ab50e2cb28f090bc19b7edb0fa841007178e595f0' '/tmp/precision-patch.xz.b64' | sha256sum -c -
+          base64 --decode /tmp/precision-patch.xz.b64 > /tmp/precision-patch.xz
+          printf '%s  %s\n' '6d7d6dcf4ce9e234e974fa6f5a0a62035eaf5e4ae72df8ded9325577add00e91' '/tmp/precision-patch.xz' | sha256sum -c -
+          xz --decompress --stdout /tmp/precision-patch.xz > /tmp/precision.patch
+          printf '%s  %s\n' '030ad9c95f83a466e55f0ab357dcb2da092392f79692595acd3e416af39e4bf6' '/tmp/precision.patch' | sha256sum -c -
+          git apply /tmp/precision.patch
+          test "$(sha256sum App.js | awk '{print $1}')" = '00085bb64cb812b8459401ff9df9384702ba646538892b59e1e51bd2267fd78d'
+
+      - name: Stage rendered UI source
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p snapshot/src/components snapshot/src/ui snapshot/tests
+          cp App.js snapshot/App.js
+          cp src/theme.js snapshot/src/theme.js
+          cp src/components/Icons.js snapshot/src/components/Icons.js
+          cp src/components/IntelligenceHub.js snapshot/src/components/IntelligenceHub.js
+          cp src/components/WorkspaceCommandOverview.js snapshot/src/components/WorkspaceCommandOverview.js
+          cp src/ui/primitives.js snapshot/src/ui/primitives.js
+          cp src/ui/responsive.mjs snapshot/src/ui/responsive.mjs
+          cp src/ui/tokens.js snapshot/src/ui/tokens.js
+          cp tests/mobileLayoutSafety.test.mjs snapshot/tests/mobileLayoutSafety.test.mjs
+          cp tests/precision-command-centre.test.mjs snapshot/tests/precision-command-centre.test.mjs
+          sha256sum snapshot/App.js snapshot/src/theme.js snapshot/src/ui/primitives.js > snapshot/SHA256SUMS.txt
+
+      - name: Upload exact post-patch UI source
+        uses: actions/upload-artifact@v4
+        with:
+          name: precision-post-patch-ui-source
+          path: snapshot
+          if-no-files-found: error
+          retention-days: 2
