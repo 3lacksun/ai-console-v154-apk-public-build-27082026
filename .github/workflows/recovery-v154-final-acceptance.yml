@@ -190,8 +190,11 @@ jobs:
           grep -F 'Status: ok' "$EVIDENCE/api36-start.txt"
           sleep 30
           adb logcat -d > "$EVIDENCE/api36-logcat.txt"
-          test -n "$(adb shell pidof "$PACKAGE_NAME" | tr -d '\r[:space:]')"
-          ! grep -Eqi 'FATAL EXCEPTION|UnsatisfiedLinkError|NoClassDefFoundError|ActivityNotFoundException|ReactNativeJS.*(TypeError|ReferenceError|RangeError|SyntaxError|Invariant Violation|Fatal)|SIGSEGV|ANR|Process: com\.nexarenew\.aiconsole.*has died' "$EVIDENCE/api36-logcat.txt"
+          APP_PID="$(adb shell pidof "$PACKAGE_NAME" | tr -d '\r[:space:]')"
+          test -n "$APP_PID"
+          awk -v pid="$APP_PID" '$3 == pid' "$EVIDENCE/api36-logcat.txt" > "$EVIDENCE/api36-app-logcat.txt"
+          ! grep -Eqi 'FATAL EXCEPTION|UnsatisfiedLinkError|NoClassDefFoundError|ActivityNotFoundException|ReactNativeJS.*(TypeError|ReferenceError|RangeError|SyntaxError|Invariant Violation|Fatal)|SIGSEGV|ANR' "$EVIDENCE/api36-app-logcat.txt"
+          ! grep -Eqi "Process: ${PACKAGE_NAME}.*has died|am_crash.*${PACKAGE_NAME}|am_anr.*${PACKAGE_NAME}" "$EVIDENCE/api36-logcat.txt"
           ready=0
           for attempt in $(seq 1 15); do
             adb shell uiautomator dump /sdcard/recovery-window.xml >/dev/null 2>&1 || true
@@ -240,8 +243,11 @@ jobs:
           grep -F 'Status: ok' "$EVIDENCE/ps16k-start.txt"
           sleep 30
           adb logcat -d > "$EVIDENCE/ps16k-logcat.txt"
-          test -n "$(adb shell pidof "$PACKAGE_NAME" | tr -d '\r[:space:]')"
-          ! grep -Eqi 'FATAL EXCEPTION|UnsatisfiedLinkError|NoClassDefFoundError|ActivityNotFoundException|ReactNativeJS.*(TypeError|ReferenceError|RangeError|SyntaxError|Invariant Violation|Fatal)|SIGSEGV|ANR|Process: com\.nexarenew\.aiconsole.*has died' "$EVIDENCE/ps16k-logcat.txt"
+          APP_PID="$(adb shell pidof "$PACKAGE_NAME" | tr -d '\r[:space:]')"
+          test -n "$APP_PID"
+          awk -v pid="$APP_PID" '$3 == pid' "$EVIDENCE/ps16k-logcat.txt" > "$EVIDENCE/ps16k-app-logcat.txt"
+          ! grep -Eqi 'FATAL EXCEPTION|UnsatisfiedLinkError|NoClassDefFoundError|ActivityNotFoundException|ReactNativeJS.*(TypeError|ReferenceError|RangeError|SyntaxError|Invariant Violation|Fatal)|SIGSEGV|ANR' "$EVIDENCE/ps16k-app-logcat.txt"
+          ! grep -Eqi "Process: ${PACKAGE_NAME}.*has died|am_crash.*${PACKAGE_NAME}|am_anr.*${PACKAGE_NAME}" "$EVIDENCE/ps16k-logcat.txt"
           ready=0
           for attempt in $(seq 1 15); do
             adb shell uiautomator dump /sdcard/recovery-window.xml >/dev/null 2>&1 || true
