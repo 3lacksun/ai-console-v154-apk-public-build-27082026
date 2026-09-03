@@ -11,6 +11,7 @@ permissions:
 
 env:
   SOURCE_SHA256: 4d7d98b1b5c93dc8b247ce318f536580367736831eae76de1be626109a31d9bd
+  CHUNK26_B64_SHA256: 0e25c663abc8942b4a46430b094336eb06d282c8c67212a1c07ae02eef593ff7
   BUILD_TOOLS: 36.0.0
   ANDROID_API: 36
   EVIDENCE_DIR: build31-final-evidence
@@ -31,17 +32,26 @@ jobs:
           mkdir -p "$EVIDENCE_DIR"
           find ci/dr-stone-build31/exact -maxdepth 1 -type f -printf '%f %s\n' | sort | tee "$EVIDENCE_DIR/transport-segment-sizes.txt"
 
+          # Authoritative chunk 03 is the existing verified 7,500-byte raw Git object.
           test "$(git hash-object ci/dr-stone-build31/source.part04.bin)" = "04d06eca387e24218f323533287e8d4afcfecc32"
           test "$(stat -c %s ci/dr-stone-build31/source.part04.bin)" -eq 7500
+
+          # Authoritative chunk 26 is reconstructed from five independently verified
+          # 2,000-character Base64 segments; the combined encoded SHA is locked too.
+          cat ci/dr-stone-build31/exact/source.part26{a,b,c,d,e}.b64 > /tmp/source.part26.b64
+          test "$(stat -c %s /tmp/source.part26.b64)" -eq 10000
+          echo "$CHUNK26_B64_SHA256  /tmp/source.part26.b64" | sha256sum -c - | tee "$EVIDENCE_DIR/chunk26-sha256-verdict.txt"
 
           : > build31_compile_min.zip
           for i in 00 01 02; do
             base64 --decode "ci/dr-stone-build31/exact/source.part${i}.b64" >> build31_compile_min.zip
           done
           cat ci/dr-stone-build31/source.part04.bin >> build31_compile_min.zip
-          for i in 04 05 06 07 08 09 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27; do
+          for i in 04 05 06 07 08 09 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25; do
             base64 --decode "ci/dr-stone-build31/exact/source.part${i}.b64" >> build31_compile_min.zip
           done
+          base64 --decode /tmp/source.part26.b64 >> build31_compile_min.zip
+          base64 --decode ci/dr-stone-build31/exact/source.part27.b64 >> build31_compile_min.zip
 
           stat -c 'SOURCE_BYTES=%s' build31_compile_min.zip | tee "$EVIDENCE_DIR/source-size.txt"
           sha256sum build31_compile_min.zip | tee "$EVIDENCE_DIR/source-sha256-observed.txt"
