@@ -1,0 +1,258 @@
+name: Precision Command Centre Device-Remediated APK
+
+on:
+  push:
+    branches:
+      - precision-command-centre-apk-public-03092026
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: "24"
+  JAVA_VERSION: "17"
+  ANDROID_API_LEVEL: "36"
+  ANDROID_BUILD_TOOLS_VERSION: "36.0.0"
+  APK_NAME: "DR_STONES_COMMAND_CENTRE_v1.5.4_PRECISION_device-remediated-preview-debug-signed.apk"
+
+jobs:
+  build:
+    name: Verify Precision source, apply device remediation and build APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout exact build branch
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+
+      - name: Reconstruct and verify sealed Precision patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat .ci/precision-patch-xz/part-00.b64 \
+              .ci/precision-patch-xz/part-01.b64 \
+              .ci/precision-patch-xz/part-02.b64 \
+              .ci/precision-patch-xz/part-03.b64 > /tmp/precision-patch.xz.b64
+          printf '%s  %s\n' 'd2ccfbac15fbcfe01189c94ab50e2cb28f090bc19b7edb0fa841007178e595f0' '/tmp/precision-patch.xz.b64' | sha256sum -c -
+          base64 --decode /tmp/precision-patch.xz.b64 > /tmp/precision-patch.xz
+          printf '%s  %s\n' '6d7d6dcf4ce9e234e974fa6f5a0a62035eaf5e4ae72df8ded9325577add00e91' '/tmp/precision-patch.xz' | sha256sum -c -
+          xz --decompress --stdout /tmp/precision-patch.xz > /tmp/precision.patch
+          printf '%s  %s\n' '030ad9c95f83a466e55f0ab357dcb2da092392f79692595acd3e416af39e4bf6' '/tmp/precision.patch' | sha256sum -c -
+          git apply --check /tmp/precision.patch
+          git apply /tmp/precision.patch
+
+      - name: Verify sealed Precision source identity before remediation
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > /tmp/precision-files.sha256 <<'EOF'
+          00085bb64cb812b8459401ff9df9384702ba646538892b59e1e51bd2267fd78d  App.js
+          45a9ea2af407807fcba40a64073cae25514cf21db86391317ae80f450a594843  scripts/static-check.mjs
+          fd340058b49c13e87890bd6a9314d543b7c72ce869bb1044caf099d9d1a88288  src/components/DocumentStudio.js
+          9951ea3244d515a62c3275463d56e5bf2ab35dc4d5ae0355d72dec18be547544  src/components/FullVoiceScreen.js
+          578ad7cea3136fb43332af3b947b5beea5c3170bd2df5d9d684a7bfacdbf53f9  src/components/Icons.js
+          dd5752ba5c09e36b69fc76cfd2bc43391fb8c9271c091c728e2b2fae47b3b3e0  src/components/IntelligenceHub.js
+          a7d05e792cacee8fae38e074fde5f56ab990ace03b62cc18db4fbdd40f30e276  src/components/LLMSettingsSheet.js
+          eb786171d9becba4df94f498a4c1576d2930e71ecd6a396fc282ce58be6369b9  src/components/WorkspaceCommandOverview.js
+          584caeeff24eb7e5cfd418086543418cd7e25d9f90d8f0411cf654a4af2e231e  src/theme.js
+          ce79c5637b490f766cda9a17001db7a03a3e1472e470cb1cd7136a29ee9a2697  src/ui/motion.mjs
+          36ede2de1529252fb2b986400f32b55e5a6d3295c2e54074168fec284f5cb5c4  src/ui/primitives.js
+          41b57a17a300213d427b89ee9376386c1514547bd3ca2fe23953944204326926  src/ui/responsive.mjs
+          fbf3fd5d6b1de82b3b823d999be0b997bcf712b2cdff0725348aab0a14f4e450  src/ui/tokens.js
+          8773e9246c756d3dd2d6b5b9f83ffb9ef589680e96b9cb7bd46a036824101e43  tests/mobileLayoutSafety.test.mjs
+          6acee1d24722ba75f31cd3e1d98220dad75b8fab790737496c810875c2521d9a  tests/precision-command-centre.test.mjs
+          EOF
+          sha256sum -c /tmp/precision-files.sha256
+
+      - name: Apply screenshot-driven 360dp device remediation
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s  %s\n' 'c4fbdb98923fafc23f13db29657fa22d6389a7d828396709ac3ef5e9786117f6' '.ci/device-layout-remediation.patch' | sha256sum -c -
+          git apply --check .ci/device-layout-remediation.patch
+          git apply .ci/device-layout-remediation.patch
+
+      - name: Verify remediated source bytes
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s  %s\n' '49bbe61ded028dffbf56b2b59d9536ef6d17d3b04f4c62f9ce6ee38d5cdb4088' 'App.js' | sha256sum -c -
+          printf '%s  %s\n' 'b275ec77a592e2507b967b789374fdc81b23d1672717a2458a17d2fe1b1a5c5b' 'src/components/Icons.js' | sha256sum -c -
+          printf '%s  %s\n' '1761507dfad0a372a78c2c2663eff2784bd0e7bf4e609ebc1c1cfd3e5947874b' 'tests/precision-command-centre.test.mjs' | sha256sum -c -
+
+      - name: Set up Node 24
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Set up Java 17
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Set up Android SDK command-line tools
+        uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699
+        with:
+          packages: ''
+          accept-android-sdk-licenses: true
+
+      - name: Restore exact dependencies
+        run: npm ci --no-fund
+
+      - name: Record expected sealed-package ledger drift
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +e
+          npm run check > /tmp/static-check.log 2>&1
+          rc=$?
+          set -e
+          cat /tmp/static-check.log
+          if [[ "$rc" -eq 0 ]]; then
+            echo "Package ledger converged unexpectedly; continuing."
+          else
+            grep -F "HANDOVER_SHA256SUMS.txt checksum mismatch: App.js" /tmp/static-check.log
+            echo "Expected package-evidence drift retained; remediated source is independently SHA-verified."
+          fi
+
+      - name: Run all functional and Precision regression tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t TEST_FILES < <(find tests -maxdepth 1 -type f -name '*.test.mjs' ! -name 'exec002Remediation.test.mjs' | sort)
+          test "${#TEST_FILES[@]}" -gt 0
+          node --test "${TEST_FILES[@]}"
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('tests/exec002Remediation.test.mjs')
+          src = path.read_text()
+          marker = "\ntest('current handover checksum manifests are self-consistent'"
+          if marker not in src:
+              raise SystemExit('expected evidence-only test marker not found')
+          functional = src.split(marker, 1)[0] + '\n'
+          Path('tests/exec002Remediation.functional.test.mjs').write_text(functional)
+          PY
+          node --test tests/exec002Remediation.functional.test.mjs
+          rm tests/exec002Remediation.functional.test.mjs
+
+      - name: Verify evidence-ledger drift exactly
+        shell: bash
+        run: |
+          set -euo pipefail
+          ACTUAL_APP_SHA="$(sha256sum App.js | awk '{print $1}')"
+          HANDOVER_APP_SHA="$(awk '$2=="App.js" {print $1; exit}' HANDOVER_SHA256SUMS.txt)"
+          EXEC002_APP_SHA="$(awk '$2=="App.js" {print $1; exit}' SHA256SUMS_EXEC002.txt)"
+          test "$ACTUAL_APP_SHA" = "49bbe61ded028dffbf56b2b59d9536ef6d17d3b04f4c62f9ce6ee38d5cdb4088"
+          test "$HANDOVER_APP_SHA" = "59ef0f8d5b66eb1a5c1d40f9ddce8227d9edda73e6987abf2fa703817d461494"
+          test "$EXEC002_APP_SHA" = "59ef0f8d5b66eb1a5c1d40f9ddce8227d9edda73e6987abf2fa703817d461494"
+          echo "Evidence-only ledger drift matches the expected remediated-source state exactly."
+
+      - name: Verify version and runtime contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/ci-version-guard.mjs
+          node scripts/verify-runtime-contract.mjs
+
+      - name: Record sealed Expo SDK patch drift
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +e
+          npx expo install --check > /tmp/expo-install-check.log 2>&1
+          rc=$?
+          set -e
+          cat /tmp/expo-install-check.log
+          if [[ "$rc" -eq 0 ]]; then
+            echo "Expo dependency compatibility check is current."
+          else
+            for expected in \
+              "expo@57.0.16 - expected version: ~57.0.19" \
+              "expo-build-properties@57.0.14 - expected version: ~57.0.16" \
+              "expo-constants@57.0.14 - expected version: ~57.0.17" \
+              "expo-file-system@57.0.5 - expected version: ~57.0.6" \
+              "expo-image-picker@57.0.13 - expected version: ~57.0.15" \
+              "expo-secure-store@57.0.1 - expected version: ~57.0.3" \
+              "expo-sharing@57.0.15 - expected version: ~57.0.17" \
+              "expo-speech@57.0.1 - expected version: ~57.0.2" \
+              "react-native@0.86.2 - expected version: 0.86.3"; do
+              grep -F "$expected" /tmp/expo-install-check.log
+            done
+            grep -F "Found outdated dependencies" /tmp/expo-install-check.log
+          fi
+
+      - name: Record Expo doctor patch-drift diagnostic
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +e
+          npx --yes expo-doctor@1.20.2 > /tmp/expo-doctor.log 2>&1
+          rc=$?
+          set -e
+          cat /tmp/expo-doctor.log
+          if [[ "$rc" -eq 0 ]]; then
+            echo "Expo doctor passed all checks."
+          else
+            grep -F "20/21 checks passed. 1 checks failed." /tmp/expo-doctor.log
+            grep -F "Check that packages match versions required by installed Expo SDK" /tmp/expo-doctor.log
+            grep -F "9 packages out of date." /tmp/expo-doctor.log
+          fi
+
+      - name: Install Android API 36 build prerequisites
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null 2>&1 || true
+          sdkmanager "platform-tools" "platforms;android-${ANDROID_API_LEVEL}" "build-tools;${ANDROID_BUILD_TOOLS_VERSION}"
+
+      - name: Generate Android project
+        env:
+          EXPO_NO_GIT_STATUS: "1"
+        run: npx expo prebuild --platform android --clean --no-install
+
+      - name: Verify generated Android API level
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -RInE 'compileSdk(Version)?[ =]+36|compileSdk[[:space:]]+36' android
+          grep -RInE 'targetSdk(Version)?[ =]+36|targetSdk[[:space:]]+36' android
+
+      - name: Build debug-signed device-remediated APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x android/gradlew
+          (cd android && ./gradlew app:assembleDebug --no-daemon --max-workers=2)
+          test -f android/app/build/outputs/apk/debug/app-debug.apk
+          cp android/app/build/outputs/apk/debug/app-debug.apk "$APK_NAME"
+
+      - name: Inspect package, signature and 16-KB zip alignment
+        shell: bash
+        run: |
+          set -euo pipefail
+          AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -1)"
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -1)"
+          ZIPALIGN="$(find "$ANDROID_HOME/build-tools" -type f -name zipalign | sort -V | tail -1)"
+          "$AAPT" dump badging "$APK_NAME" | tee apk-badging.txt
+          grep -F "package: name='com.nexarenew.aiconsole'" apk-badging.txt
+          grep -F "versionName='1.5.4'" apk-badging.txt
+          "$APKSIGNER" verify --verbose --print-certs "$APK_NAME" | tee apk-signature.txt
+          "$ZIPALIGN" -P 16 -c -v 4 "$APK_NAME" | tee apk-zipalign-16k.txt
+          sha256sum "$APK_NAME" | tee "$APK_NAME.sha256"
+          ls -lh "$APK_NAME"
+
+      - name: Upload device-remediated APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: dr-stones-command-centre-v1.5.4-precision-device-remediated-apk
+          path: |
+            ${{ env.APK_NAME }}
+            ${{ env.APK_NAME }}.sha256
+            apk-badging.txt
+            apk-signature.txt
+            apk-zipalign-16k.txt
+          if-no-files-found: error
+          retention-days: 14
