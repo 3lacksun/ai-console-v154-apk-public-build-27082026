@@ -102,19 +102,29 @@ jobs:
           set -e
           cat /tmp/static-check.log
           if [[ "$rc" -eq 0 ]]; then
-            echo "Package ledger is already converged; continuing." 
+            echo "Package ledger is already converged; continuing."
           else
             grep -F "HANDOVER_SHA256SUMS.txt checksum mismatch: App.js" /tmp/static-check.log
             echo "Known evidence-ledger mismatch isolated; exact application source SHA gate remains authoritative for this preview build."
           fi
 
-      - name: Verify application regression and runtime contracts
+      - name: Run dependency-complete deterministic regression directly
         shell: bash
         run: |
           set -euo pipefail
-          npm test
+          node --test tests/*.test.mjs
+
+      - name: Verify version and runtime contracts
+        shell: bash
+        run: |
+          set -euo pipefail
           node scripts/ci-version-guard.mjs
           node scripts/verify-runtime-contract.mjs
+
+      - name: Verify Expo dependency compatibility
+        shell: bash
+        run: |
+          set -euo pipefail
           npx expo install --check
           npx --yes expo-doctor@1.20.2
 
