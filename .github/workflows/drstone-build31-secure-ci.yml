@@ -1,0 +1,254 @@
+name: Dr Stone Command Build 31 secure APK generation
+
+on:
+  push:
+    branches:
+      - drstone-build31-secure-ci-03092026124700
+    paths:
+      - '.github/workflows/drstone-build31-secure-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  SOURCE_SHA256: "51fa6637373292ba44a718ee2ee16ed9742d96e4224527955b8547c37658e03e"
+  SOURCE_ZIP: "DR_STONE_COMMAND_V0_3_0_BUILD31_AUDITSKILL_TECHNICAL_COMPLETE_SOURCE_03092026115008.zip"
+  APK_NAME: "DR_STONE_COMMAND_V0_3_0_BUILD31_AUDITSKILL_DEBUG.apk"
+  EVIDENCE_DIR: "build31-github-evidence"
+  ANDROID_API: "36"
+  BUILD_TOOLS: "36.0.0"
+  AVD_NAME: "drstone-api36"
+  SYSTEM_IMAGE: "system-images;android-36;google_apis;x86_64"
+
+jobs:
+  build31:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Checkout secure transport branch
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          fetch-depth: 0
+
+      - name: Generate ephemeral transport key and publish public half
+        id: transport-key
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$EVIDENCE_DIR"
+          PRIV="$RUNNER_TEMP/drstone-transport-private.pem"
+          PUB="$RUNNER_TEMP/drstone-transport-public.pem"
+          openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:3072 -out "$PRIV"
+          openssl pkey -in "$PRIV" -pubout -out "$PUB"
+          PUB_B64="$(base64 -w0 "$PUB")"
+          TITLE="DRSTONE_BUILD31_TRANSPORT_KEY_${GITHUB_RUN_ID}"
+          BODY="$(printf 'RUN_ID=%s\nBRANCH=%s\nSOURCE_SHA256=%s\nPUBLIC_KEY_B64=%s\n' "$GITHUB_RUN_ID" "$GITHUB_REF_NAME" "$SOURCE_SHA256" "$PUB_B64")"
+          ISSUE_JSON="$(gh api --method POST "repos/${GITHUB_REPOSITORY}/issues" -f title="$TITLE" -f body="$BODY")"
+          ISSUE_NUMBER="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["number"])' <<<"$ISSUE_JSON")"
+          echo "ISSUE_NUMBER=$ISSUE_NUMBER" >> "$GITHUB_ENV"
+          echo "transport_issue=$ISSUE_NUMBER" >> "$GITHUB_OUTPUT"
+          printf 'transport_issue=%s\nrun_id=%s\n' "$ISSUE_NUMBER" "$GITHUB_RUN_ID" > "$EVIDENCE_DIR/transport-session.txt"
+
+      - name: Wait for encrypted Build 31 payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          FOUND=0
+          for attempt in $(seq 1 240); do
+            git fetch origin "$GITHUB_REF_NAME" --quiet
+            if git cat-file -e "origin/$GITHUB_REF_NAME:transport/source.zip.enc.b64" 2>/dev/null \
+              && git cat-file -e "origin/$GITHUB_REF_NAME:transport/key.enc.b64" 2>/dev/null \
+              && git cat-file -e "origin/$GITHUB_REF_NAME:transport/iv.bin.b64" 2>/dev/null; then
+              git show "origin/$GITHUB_REF_NAME:transport/source.zip.enc.b64" | base64 -d > "$RUNNER_TEMP/source.zip.enc"
+              git show "origin/$GITHUB_REF_NAME:transport/key.enc.b64" | base64 -d > "$RUNNER_TEMP/key.enc"
+              git show "origin/$GITHUB_REF_NAME:transport/iv.bin.b64" | base64 -d > "$RUNNER_TEMP/iv.bin"
+              FOUND=1
+              break
+            fi
+            sleep 5
+          done
+          test "$FOUND" -eq 1 || { echo "Encrypted transport payload was not supplied in time" >&2; exit 1; }
+          test -s "$RUNNER_TEMP/source.zip.enc"
+          test -s "$RUNNER_TEMP/key.enc"
+          test -s "$RUNNER_TEMP/iv.bin"
+
+      - name: Decrypt and integrity-lock exact Build 31 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          openssl pkeyutl -decrypt \
+            -inkey "$RUNNER_TEMP/drstone-transport-private.pem" \
+            -in "$RUNNER_TEMP/key.enc" \
+            -out "$RUNNER_TEMP/aes.key" \
+            -pkeyopt rsa_padding_mode:oaep \
+            -pkeyopt rsa_oaep_md:sha256
+          KEYHEX="$(xxd -p -c 256 "$RUNNER_TEMP/aes.key")"
+          IVHEX="$(xxd -p -c 256 "$RUNNER_TEMP/iv.bin")"
+          openssl enc -d -aes-256-cbc \
+            -K "$KEYHEX" -iv "$IVHEX" \
+            -in "$RUNNER_TEMP/source.zip.enc" \
+            -out "$RUNNER_TEMP/$SOURCE_ZIP"
+          echo "$SOURCE_SHA256  $RUNNER_TEMP/$SOURCE_ZIP" | sha256sum -c - | tee "$EVIDENCE_DIR/source-sha256.txt"
+          unzip -t "$RUNNER_TEMP/$SOURCE_ZIP" | tee "$EVIDENCE_DIR/source-zip-integrity.txt"
+          mkdir -p "$RUNNER_TEMP/drstone-src"
+          unzip -q "$RUNNER_TEMP/$SOURCE_ZIP" -d "$RUNNER_TEMP/drstone-src"
+          SRC_DIR="$RUNNER_TEMP/drstone-src"
+          test -f "$SRC_DIR/app/build.gradle.kts"
+          test -f "$SRC_DIR/gradlew"
+          chmod +x "$SRC_DIR/gradlew"
+          echo "SRC_DIR=$SRC_DIR" >> "$GITHUB_ENV"
+          rm -f "$RUNNER_TEMP/aes.key" "$RUNNER_TEMP/source.zip.enc" "$RUNNER_TEMP/key.enc" "$RUNNER_TEMP/iv.bin" "$RUNNER_TEMP/drstone-transport-private.pem"
+
+      - name: Set up Java 21
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699
+        with:
+          packages: ''
+          accept-android-sdk-licenses: true
+
+      - name: Install Android API 36 build and emulator prerequisites
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null 2>&1 || true
+          sdkmanager \
+            "platform-tools" \
+            "platforms;android-${ANDROID_API}" \
+            "build-tools;${BUILD_TOOLS}" \
+            "emulator" \
+            "$SYSTEM_IMAGE"
+          sdkmanager --list_installed | tee "$EVIDENCE_DIR/android-sdk-installed.txt"
+
+      - name: Verify Build 31 identity and source regression matrix
+        shell: bash
+        working-directory: ${{ env.SRC_DIR }}
+        run: |
+          set -euo pipefail
+          grep -F 'applicationId = "com.nexarenew.drstonecommand"' app/build.gradle.kts | tee "$GITHUB_WORKSPACE/$EVIDENCE_DIR/application-id.txt"
+          grep -F 'versionCode = 31' app/build.gradle.kts | tee "$GITHUB_WORKSPACE/$EVIDENCE_DIR/version-code.txt"
+          grep -F 'versionName = "0.3.0"' app/build.gradle.kts | tee "$GITHUB_WORKSPACE/$EVIDENCE_DIR/version-name.txt"
+          grep -F 'compileSdk = 36' app/build.gradle.kts | tee "$GITHUB_WORKSPACE/$EVIDENCE_DIR/compile-sdk.txt"
+          grep -F 'targetSdk = 36' app/build.gradle.kts | tee "$GITHUB_WORKSPACE/$EVIDENCE_DIR/target-sdk.txt"
+          bash tools/run-pure-tests.sh | tee "$GITHUB_WORKSPACE/$EVIDENCE_DIR/pure-tests.txt"
+          bash tools/verify-dr-stone-release-contracts.sh | tee "$GITHUB_WORKSPACE/$EVIDENCE_DIR/release-contracts.txt"
+          bash tools/verify-ux-feature-patch.sh | tee "$GITHUB_WORKSPACE/$EVIDENCE_DIR/ux-contracts.txt"
+          bash tools/verify-build25-feature-contracts.sh | tee "$GITHUB_WORKSPACE/$EVIDENCE_DIR/retained-feature-contracts.txt"
+          bash tools/verify-large-file-contracts.sh | tee "$GITHUB_WORKSPACE/$EVIDENCE_DIR/large-file-contracts.txt"
+          bash tools/verify-media-contracts.sh | tee "$GITHUB_WORKSPACE/$EVIDENCE_DIR/media-contracts.txt"
+          bash tools/verify-auditskill-remediation-contracts.sh | tee "$GITHUB_WORKSPACE/$EVIDENCE_DIR/auditskill-remediation-contracts.txt"
+          bash tools/run-large-file-buffer-tests.sh | tee "$GITHUB_WORKSPACE/$EVIDENCE_DIR/large-file-buffer-tests.txt"
+          bash tools/verify-build-reproducibility.sh | tee "$GITHUB_WORKSPACE/$EVIDENCE_DIR/build-reproducibility.txt"
+
+      - name: Android unit tests
+        shell: bash
+        working-directory: ${{ env.SRC_DIR }}
+        run: |
+          set -o pipefail
+          ./gradlew --no-daemon --max-workers=2 testDebugUnitTest 2>&1 | tee "$GITHUB_WORKSPACE/$EVIDENCE_DIR/testDebugUnitTest.txt"
+
+      - name: Kotlin compilation
+        shell: bash
+        working-directory: ${{ env.SRC_DIR }}
+        run: |
+          set -o pipefail
+          ./gradlew --no-daemon --max-workers=2 :app:compileDebugKotlin 2>&1 | tee "$GITHUB_WORKSPACE/$EVIDENCE_DIR/compileDebugKotlin.txt"
+
+      - name: Android lint
+        shell: bash
+        working-directory: ${{ env.SRC_DIR }}
+        run: |
+          set -o pipefail
+          ./gradlew --no-daemon --max-workers=2 lintDebug 2>&1 | tee "$GITHUB_WORKSPACE/$EVIDENCE_DIR/lintDebug.txt"
+
+      - name: Clean assemble debug APK
+        shell: bash
+        working-directory: ${{ env.SRC_DIR }}
+        run: |
+          set -o pipefail
+          ./gradlew --no-daemon --max-workers=2 clean assembleDebug 2>&1 | tee "$GITHUB_WORKSPACE/$EVIDENCE_DIR/assembleDebug.txt"
+          test -f app/build/outputs/apk/debug/app-debug.apk
+          cp app/build/outputs/apk/debug/app-debug.apk "$GITHUB_WORKSPACE/$APK_NAME"
+
+      - name: APK identity, alignment and signature verification
+        shell: bash
+        run: |
+          set -euo pipefail
+          BT="$ANDROID_HOME/build-tools/$BUILD_TOOLS"
+          "$BT/aapt" dump badging "$APK_NAME" | tee "$EVIDENCE_DIR/apk-badging.txt"
+          grep -F "package: name='com.nexarenew.drstonecommand' versionCode='31' versionName='0.3.0'" "$EVIDENCE_DIR/apk-badging.txt"
+          grep -F "sdkVersion:'26'" "$EVIDENCE_DIR/apk-badging.txt"
+          grep -F "targetSdkVersion:'36'" "$EVIDENCE_DIR/apk-badging.txt"
+          grep -F "application-label:'Dr Stone Command'" "$EVIDENCE_DIR/apk-badging.txt"
+          "$BT/aapt" dump permissions "$APK_NAME" | tee "$EVIDENCE_DIR/apk-permissions.txt"
+          "$BT/aapt" dump xmltree "$APK_NAME" AndroidManifest.xml | tee "$EVIDENCE_DIR/apk-manifest.txt"
+          "$BT/zipalign" -c -P 16 -v 4 "$APK_NAME" | tee "$EVIDENCE_DIR/zipalign-16k.txt"
+          "$BT/apksigner" verify --verbose --print-certs "$APK_NAME" | tee "$EVIDENCE_DIR/apksigner.txt"
+          sha256sum "$APK_NAME" | tee "$APK_NAME.sha256" "$EVIDENCE_DIR/apk-sha256.txt"
+          stat -c '%s' "$APK_NAME" | tee "$EVIDENCE_DIR/apk-size-bytes.txt"
+          printf 'applicationId=com.nexarenew.drstonecommand\nversionCode=31\nversionName=0.3.0\nminSdk=26\ncompileSdk=36\ntargetSdk=36\nsourceSha256=%s\n' "$SOURCE_SHA256" > "$EVIDENCE_DIR/BUILD_IDENTITY.txt"
+
+      - name: Enable KVM for API 36 emulator
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -e /dev/kvm
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          test -r /dev/kvm -a -w /dev/kvm
+
+      - name: API 36 emulator install and cold-launch smoke test
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo no | avdmanager create avd --force --name "$AVD_NAME" --package "$SYSTEM_IMAGE" --device pixel_6
+          "$ANDROID_HOME/emulator/emulator" -avd "$AVD_NAME" -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot > "$EVIDENCE_DIR/emulator.log" 2>&1 &
+          EMULATOR_PID=$!
+          adb wait-for-device
+          BOOTED=0
+          for attempt in $(seq 1 120); do
+            if [[ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" == "1" ]]; then BOOTED=1; break; fi
+            sleep 2
+          done
+          test "$BOOTED" -eq 1 || { tail -200 "$EVIDENCE_DIR/emulator.log"; exit 1; }
+          adb install -r "$APK_NAME" | tee "$EVIDENCE_DIR/emulator-install.txt"
+          adb shell am force-stop com.nexarenew.drstonecommand
+          adb shell monkey -p com.nexarenew.drstonecommand -c android.intent.category.LAUNCHER 1 | tee "$EVIDENCE_DIR/emulator-launch.txt"
+          sleep 5
+          adb shell pidof com.nexarenew.drstonecommand | tee "$EVIDENCE_DIR/emulator-pid.txt"
+          adb shell dumpsys package com.nexarenew.drstonecommand | grep -E 'versionCode=31|versionName=0.3.0' | tee "$EVIDENCE_DIR/emulator-package.txt"
+          adb logcat -d -t 400 | grep -E 'FATAL EXCEPTION|AndroidRuntime' > "$EVIDENCE_DIR/emulator-fatal-scan.txt" || true
+          if grep -q 'FATAL EXCEPTION' "$EVIDENCE_DIR/emulator-fatal-scan.txt"; then cat "$EVIDENCE_DIR/emulator-fatal-scan.txt"; exit 1; fi
+          kill "$EMULATOR_PID" || true
+          echo "API36_EMULATOR_COLD_LAUNCH=PASS" | tee "$EVIDENCE_DIR/emulator-verdict.txt"
+
+      - name: Upload Build 31 APK and verification evidence
+        if: always()
+        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08
+        with:
+          name: dr-stone-command-build31-secure-apk
+          path: |
+            DR_STONE_COMMAND_V0_3_0_BUILD31_AUDITSKILL_DEBUG.apk
+            DR_STONE_COMMAND_V0_3_0_BUILD31_AUDITSKILL_DEBUG.apk.sha256
+            build31-github-evidence/
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Close ephemeral transport-key issue
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [[ -n "${ISSUE_NUMBER:-}" ]]; then
+            gh issue close "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --comment "Transport session complete. Only the ephemeral public key was published; the private key existed only inside this runner."
+          fi
