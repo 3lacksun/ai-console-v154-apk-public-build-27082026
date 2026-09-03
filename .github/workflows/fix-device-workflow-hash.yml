@@ -1,0 +1,32 @@
+name: Bind Device Remediation Patch Hash
+
+on:
+  push:
+    branches:
+      - precision-command-centre-apk-public-03092026
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  bind:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: precision-command-centre-apk-public-03092026
+      - name: Bind exact repository patch SHA
+        shell: bash
+        run: |
+          set -euo pipefail
+          old='c4fbdb98923fafc23f13db29657fa22d6389a7d828396709ac3ef5e9786117f6'
+          new='44ad87ff57a480504b23df0fa572b1afc807b50ea503660f93a976cc2804d1cb'
+          grep -F "$old" .github/workflows/precision-device-remediated-apk.yml
+          sed -i "s/$old/$new/" .github/workflows/precision-device-remediated-apk.yml
+          grep -F "$new" .github/workflows/precision-device-remediated-apk.yml
+          git config user.name 'Dr Stones CI Remediator'
+          git config user.email 'actions@users.noreply.github.com'
+          git add .github/workflows/precision-device-remediated-apk.yml
+          git commit -m 'CI: use repository-stored device remediation patch SHA'
+          git push origin HEAD:precision-command-centre-apk-public-03092026
