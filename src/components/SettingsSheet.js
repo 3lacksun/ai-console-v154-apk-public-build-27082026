@@ -15,10 +15,9 @@ export default function SettingsSheet({ visible, onClose, onExportChat, onExport
   const voices = togetherSonicVoices.length ? togetherSonicVoices : [{ id: togetherSonicVoice || 'friendly sidekick', name: togetherSonicVoice || 'friendly sidekick' }];
   return <Modal visible={visible} animationType={reducedMotion ? 'none' : 'slide'} transparent={false} statusBarTranslucent={false} navigationBarTranslucent={false} presentationStyle="fullScreen" onRequestClose={onClose}>
     <View style={styles.backdrop}><View style={styles.sheet} accessibilityViewIsModal>
-      <View style={styles.header}><View><Text ref={modalTitleRef} accessible accessibilityRole="header" style={styles.title}>App Settings</Text><Text style={styles.headerDetail}>Device, voice, local data and export controls</Text></View><TouchableOpacity style={styles.closeBtn} onPress={onClose} accessibilityRole="button" accessibilityLabel="Close app settings"><IconClose color={palette.textMuted} /></TouchableOpacity></View>
+      <View style={styles.header}><Text ref={modalTitleRef} accessible accessibilityRole="header" style={styles.title}>App Settings</Text><TouchableOpacity style={styles.closeBtn} onPress={onClose} accessibilityRole="button" accessibilityLabel="Close app settings"><IconClose color={palette.textMuted} /></TouchableOpacity></View>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
         <Section title="General" styles={styles}>
-          <View style={styles.row}><View style={styles.rowCopy}><Text style={styles.rowTitle}>Appearance</Text><Text style={styles.rowDetail}>Light theme</Text></View><Text style={styles.valueText}>On</Text></View>
           <View style={styles.row}><View style={styles.rowCopy}><Text style={styles.rowTitle}>Speech locale</Text><Text style={styles.rowDetail}>{voiceLocale}</Text></View><TouchableOpacity style={styles.smallButton} onPress={() => onChangeVoiceLocale(voiceLocale === 'en-GB' ? 'en-US' : 'en-GB')} accessibilityRole="button"><Text style={styles.smallButtonText}>Change</Text></TouchableOpacity></View>
           <View style={styles.row}><View style={styles.rowCopy}><Text style={styles.rowTitle}>Haptic feedback</Text><Text style={styles.rowDetail}>Navigation and confirmations</Text></View><Switch value={hapticsEnabled} onValueChange={onToggleHaptics} accessibilityLabel="Toggle haptic feedback" /></View>
         </Section>
@@ -30,8 +29,8 @@ export default function SettingsSheet({ visible, onClose, onExportChat, onExport
           <Action label="Clear temporary Sonic audio cache" onPress={onClearTogetherSonicCache} styles={styles} icon={<IconTrash size={17} color={palette.textMuted} />} />
         </Section>
 
-        <Section title="Current data" styles={styles}>
-          <View style={styles.statsCard}><Text style={styles.statsText}>Schema {dataStats.schema || '—'} · {dataStats.chats || 0} chats · {dataStats.archived || 0} archived · {dataStats.attachments || 0} attachments · {dataStats.queued || 0} queued</Text><Text style={styles.inlineHint}>Secrets and transient request context are excluded from ordinary exports and backups.</Text></View>
+        <Section title="Data" styles={styles}>
+          <View style={styles.statsCard}><Text style={styles.statsText}>Schema {dataStats.schema || '—'} · {dataStats.chats || 0} chats · {dataStats.archived || 0} archived · {dataStats.attachments || 0} attachments · {dataStats.queued || 0} queued</Text></View>
         </Section>
 
         <Section title="Export & transfer" styles={styles}>
@@ -54,18 +53,16 @@ export default function SettingsSheet({ visible, onClose, onExportChat, onExport
 const createStyles = (colors) => StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: colors.bg },
   sheet: { flex: 1, backgroundColor: colors.bg },
-  header: { minHeight: 68, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.border },
+  header: { minHeight: 60, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: colors.border },
   title: { color: colors.textPrimary, fontSize: 17, fontWeight: '800' },
-  headerDetail: { color: colors.textFaint, fontSize: 10, marginTop: 2 },
   closeBtn: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center', borderRadius: radii.sm },
-  content: { width: '100%', maxWidth: 760, alignSelf: 'center', padding: 16, paddingBottom: 40, gap: 20 },
-  section: { gap: 8 },
+  content: { width: '100%', maxWidth: 680, alignSelf: 'center', padding: 14, paddingBottom: 36, gap: 16 },
+  section: { gap: 7 },
   sectionTitle: { color: colors.textMuted, fontSize: 11, fontWeight: '800', letterSpacing: 0.8, textTransform: 'uppercase', paddingHorizontal: 2 },
-  row: { minHeight: 58, paddingHorizontal: 12, paddingVertical: 8, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12, backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, borderRadius: radii.md },
+  row: { minHeight: 56, paddingHorizontal: 12, paddingVertical: 7, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12, backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, borderRadius: radii.md },
   rowCopy: { flex: 1 },
   rowTitle: { color: colors.textSecondary, fontSize: 13, fontWeight: '700' },
   rowDetail: { color: colors.textFaint, fontSize: 10, marginTop: 2 },
-  valueText: { color: colors.cyanBright, fontWeight: '700', fontSize: 11 },
   smallButton: { minHeight: 48, paddingHorizontal: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.cyanDim, borderRadius: radii.sm },
   smallButtonWide: { minHeight: 48, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.cyanBorder, borderRadius: radii.sm, backgroundColor: colors.cyanDim },
   smallButtonText: { color: colors.cyanBright, fontWeight: '700', fontSize: 11 },
@@ -73,7 +70,7 @@ const createStyles = (colors) => StyleSheet.create({
   pickerFrame: { minHeight: 52, justifyContent: 'center', overflow: 'hidden', borderWidth: 1, borderColor: colors.borderLight, borderRadius: radii.sm, backgroundColor: colors.panelAlt },
   voicePicker: { minHeight: 52, color: colors.textPrimary },
   inlineHint: { color: colors.textFaint, fontSize: 10, lineHeight: 15 },
-  statsCard: { padding: 12, gap: 4, backgroundColor: colors.panelAlt, borderWidth: 1, borderColor: colors.border, borderRadius: radii.md },
+  statsCard: { padding: 12, backgroundColor: colors.panelAlt, borderWidth: 1, borderColor: colors.border, borderRadius: radii.md },
   statsText: { color: colors.textSecondary, fontSize: 11, fontWeight: '600', lineHeight: 17 },
   action: { minHeight: 50, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', gap: 9, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.panel, borderRadius: radii.md },
   actionDisabled: { opacity: 0.5 },
