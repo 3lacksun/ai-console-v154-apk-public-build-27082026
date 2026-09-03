@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 env:
-  PAYLOAD_URL: https://drive.google.com/uc?export=download&id=1pxaSoYyDikymC93Q4DGuLZ4IMoIeCbws
+  PAYLOAD_FILE_ID: 1pxaSoYyDikymC93Q4DGuLZ4IMoIeCbws
   PAYLOAD_SHA256: de0c8f3a56055a12adfc8e1e07eafe5fa78a2108c4c59353689a49d8ad5fa3c7
   PACKAGE_NAME: im.turncall.app
   VERSION_NAME: 1.2.1
@@ -27,7 +27,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          curl -fL -A 'Mozilla/5.0' --retry 3 --retry-delay 2 "$PAYLOAD_URL" -o /tmp/turncall-payload.zip
+          python3 -m pip install --disable-pip-version-check --no-input gdown
+          python3 -m gdown "$PAYLOAD_FILE_ID" -O /tmp/turncall-payload.zip
           wc -c /tmp/turncall-payload.zip
           file /tmp/turncall-payload.zip
           sha256sum /tmp/turncall-payload.zip
