@@ -2,7 +2,7 @@ name: Code Dump Tool Audit Remediation APK
 
 on:
   push:
-    branches: [ codedump-audit-remediation-03092026 ]
+    branches: [ codedump-audit-remediation-03092026, codedump-mobile-flow-hotfix-03092026 ]
   workflow_dispatch:
 
 permissions:
@@ -72,6 +72,23 @@ jobs:
           node --check web/app.js
           node --check web/core.js
           node --check web/archive-core.js
+
+      - name: Apply mobile extraction and review workflow hotfix
+        if: github.ref_name == 'codedump-mobile-flow-hotfix-03092026'
+        working-directory: codedump
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 mobile-flow-hotfix.py
+          node --check web/app.js
+          node --check web/archive-core.js
+          grep -q 'mobile-workflow-dock' web/app.js
+          grep -q 'createNextAction' web/app.js
+          grep -q 'preflight-actions' web/app.js
+          grep -q 'max-height:min(50dvh, 520px)' web/app.css
+          grep -q '20260903-v1-1-capacitor-03' web/sw.js
+          ! grep -R "44px" web/app.css
+          sha256sum web/app.js web/app.css web/archive-core.js web/sw.js | tee /tmp/mobile-flow-source-sha256.txt
 
       - name: Set up Node 22
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
@@ -150,6 +167,7 @@ jobs:
           cp codedump/android/app/build/outputs/apk/debug/app-debug.apk artifacts/
           find codedump/android/app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' -exec cp {} artifacts/ \;
           find codedump/android/app/build/outputs/bundle/release -maxdepth 1 -type f -name '*.aab' -exec cp {} artifacts/ \;
+          if test -f /tmp/mobile-flow-source-sha256.txt; then cp /tmp/mobile-flow-source-sha256.txt artifacts/MOBILE_FLOW_SOURCE_SHA256.txt; fi
           {
             echo "Carrier repository: $GITHUB_REPOSITORY"
             echo "Carrier commit: $GITHUB_SHA"
@@ -159,6 +177,7 @@ jobs:
             echo "Audit remediation input ZIP SHA-256: 5d75f8c9f05cbd591c675a4a344c00265f7a16c959c05787242cd5712ca520cf"
             echo "Audit remediation patch SHA-256: 7ed2931c02df50f9412b25bcd9a8b36207019d65eb0da90dfd2f6558b04f338c"
             echo "Source-level closures: DEFECT-004, DEFECT-005, DEFECT-006, DEFECT-007"
+            if test "$GITHUB_REF_NAME" = "codedump-mobile-flow-hotfix-03092026"; then echo "Mobile flow successor: persistent preflight/review actions, bounded project-list scroll, higher-frequency extraction progress"; fi
             echo "Universal Android MIME filter: */*"
             echo "Physical Android acceptance still required for DEFECT-001"
             echo "Capacitor: 8.5.0"
