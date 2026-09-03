@@ -11,6 +11,9 @@ permissions:
 
 env:
   SOURCE_SHA256: 4d7d98b1b5c93dc8b247ce318f536580367736831eae76de1be626109a31d9bd
+  CHUNK08_B64_SHA256: 0a9399382a1a2c46c331aeb65b715ca3b338880b5a64e947e4d4ba4def894059
+  CHUNK11_B64_SHA256: 8d2f31f03fb7fc31124f13327137bbfc61ca77bbd89bcfab06348ddf1dad9453
+  CHUNK22_B64_SHA256: 50fb7eb2ca7ce863827a779350c9c6963c0d85af7ac873a658f4def29bcfa678
   CHUNK26_B64_SHA256: 0e25c663abc8942b4a46430b094336eb06d282c8c67212a1c07ae02eef593ff7
   BUILD_TOOLS: 36.0.0
   ANDROID_API: 36
@@ -32,24 +35,33 @@ jobs:
           mkdir -p "$EVIDENCE_DIR"
           find ci/dr-stone-build31/exact -maxdepth 1 -type f -printf '%f %s\n' | sort | tee "$EVIDENCE_DIR/transport-segment-sizes.txt"
 
-          # Authoritative chunk 03 is the existing verified 7,500-byte raw Git object.
+          # Raw chunks 03 and 04 were already present as byte-exact Git objects.
           test "$(git hash-object ci/dr-stone-build31/source.part04.bin)" = "04d06eca387e24218f323533287e8d4afcfecc32"
           test "$(stat -c %s ci/dr-stone-build31/source.part04.bin)" -eq 7500
+          test "$(git hash-object ci/dr-stone-build31/source.part05.bin)" = "4a4cc00a5fb0fe39e7cc86bcd804a3a97c8e7731"
+          test "$(stat -c %s ci/dr-stone-build31/source.part05.bin)" -eq 7500
 
-          # Authoritative chunk 26 is reconstructed from five independently verified
-          # 2,000-character Base64 segments; the combined encoded SHA is locked too.
-          cat ci/dr-stone-build31/exact/source.part26{a,b,c,d,e}.b64 > /tmp/source.part26.b64
-          test "$(stat -c %s /tmp/source.part26.b64)" -eq 10000
+          # Rebuild the four corrected encoded chunks from five verified 2,000-char pieces.
+          for i in 08 11 22 26; do
+            cat ci/dr-stone-build31/exact/source.part${i}{a,b,c,d,e}.b64 > "/tmp/source.part${i}.b64"
+            test "$(stat -c %s "/tmp/source.part${i}.b64")" -eq 10000
+          done
+          echo "$CHUNK08_B64_SHA256  /tmp/source.part08.b64" | sha256sum -c - | tee "$EVIDENCE_DIR/chunk08-sha256-verdict.txt"
+          echo "$CHUNK11_B64_SHA256  /tmp/source.part11.b64" | sha256sum -c - | tee "$EVIDENCE_DIR/chunk11-sha256-verdict.txt"
+          echo "$CHUNK22_B64_SHA256  /tmp/source.part22.b64" | sha256sum -c - | tee "$EVIDENCE_DIR/chunk22-sha256-verdict.txt"
           echo "$CHUNK26_B64_SHA256  /tmp/source.part26.b64" | sha256sum -c - | tee "$EVIDENCE_DIR/chunk26-sha256-verdict.txt"
 
           : > build31_compile_min.zip
-          for i in 00 01 02; do
-            base64 --decode "ci/dr-stone-build31/exact/source.part${i}.b64" >> build31_compile_min.zip
-          done
+          for i in 00 01 02; do base64 --decode "ci/dr-stone-build31/exact/source.part${i}.b64" >> build31_compile_min.zip; done
           cat ci/dr-stone-build31/source.part04.bin >> build31_compile_min.zip
-          for i in 04 05 06 07 08 09 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25; do
-            base64 --decode "ci/dr-stone-build31/exact/source.part${i}.b64" >> build31_compile_min.zip
-          done
+          cat ci/dr-stone-build31/source.part05.bin >> build31_compile_min.zip
+          for i in 05 06 07; do base64 --decode "ci/dr-stone-build31/exact/source.part${i}.b64" >> build31_compile_min.zip; done
+          base64 --decode /tmp/source.part08.b64 >> build31_compile_min.zip
+          for i in 09 10; do base64 --decode "ci/dr-stone-build31/exact/source.part${i}.b64" >> build31_compile_min.zip; done
+          base64 --decode /tmp/source.part11.b64 >> build31_compile_min.zip
+          for i in 12 13 14 15 16 17 18 19 20 21; do base64 --decode "ci/dr-stone-build31/exact/source.part${i}.b64" >> build31_compile_min.zip; done
+          base64 --decode /tmp/source.part22.b64 >> build31_compile_min.zip
+          for i in 23 24 25; do base64 --decode "ci/dr-stone-build31/exact/source.part${i}.b64" >> build31_compile_min.zip; done
           base64 --decode /tmp/source.part26.b64 >> build31_compile_min.zip
           base64 --decode ci/dr-stone-build31/exact/source.part27.b64 >> build31_compile_min.zip
 
@@ -59,11 +71,9 @@ jobs:
           echo "$SOURCE_SHA256  build31_compile_min.zip" | sha256sum -c - | tee "$EVIDENCE_DIR/source-sha256-verdict.txt"
           unzip -t build31_compile_min.zip | tee "$EVIDENCE_DIR/source-zip-integrity.txt"
 
-          rm -rf build31
-          mkdir build31
+          rm -rf build31 && mkdir build31
           unzip -q build31_compile_min.zip -d build31
           chmod +x build31/gradlew
-
           grep -F 'applicationId = "com.nexarenew.drstonecommand"' build31/app/build.gradle.kts | tee "$EVIDENCE_DIR/source-identity.txt"
           grep -F 'versionCode = 31' build31/app/build.gradle.kts | tee -a "$EVIDENCE_DIR/source-identity.txt"
           grep -F 'versionName = "0.3.0"' build31/app/build.gradle.kts | tee -a "$EVIDENCE_DIR/source-identity.txt"
