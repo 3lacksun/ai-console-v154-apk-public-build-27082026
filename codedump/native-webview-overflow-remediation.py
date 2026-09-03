@@ -126,3 +126,8 @@ if '20260903-v1-1-capacitor-04' not in stext:
     raise SystemExit('Expected create-flow cache identity not found')
 stext = stext.replace('20260903-v1-1-capacitor-04', '20260903-v1-1-capacitor-05', 1)
 sw.write_text(stext, encoding='utf-8')
+
+mobile_action = Path('android-mobile-action-remediation.py')
+if not mobile_action.is_file():
+    raise SystemExit('android-mobile-action-remediation.py is missing')
+exec(compile(mobile_action.read_text(encoding='utf-8'), str(mobile_action), 'exec'))
