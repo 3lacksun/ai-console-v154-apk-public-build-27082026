@@ -1,0 +1,297 @@
+name: Dr Stones Command Centre v1.5.4 Recovery Acceptance RAM Fix
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - .github/workflows/recovery-v154-final-acceptance-ramfix.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  RECOVERY_REF: ux-regression-recovery-03092026
+  PACKAGE_NAME: com.nexarenew.aiconsole
+  VERSION_NAME: 1.5.4
+  VERSION_CODE: '22'
+  API36_IMAGE: system-images;android-36;google_apis;x86_64
+  PS16K_IMAGE: system-images;android-35;google_apis_ps16k;x86_64
+  APK_NAME: DR_STONES_COMMAND_CENTRE_V1_5_4_UX_RECOVERY_PREVIEW_DEBUG.apk
+  EVIDENCE: recovery-acceptance-evidence
+
+jobs:
+  recovery-acceptance:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - name: Checkout exact regression-recovery line
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ env.RECOVERY_REF }}
+          fetch-depth: 1
+
+      - name: Record recovery authority
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$EVIDENCE"
+          git rev-parse HEAD | tee "$EVIDENCE/recovery-head.txt"
+          test "$(git rev-parse HEAD)" != '6904da44b1800aa70493c3c8c6c1d231cb2eb8fc'
+          test "$(git rev-parse HEAD)" != '2692656ed574b38de4a46d426b12ee0ac88b6c1b'
+
+      - name: Set up Node 24
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Set up Java 17
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699
+        with:
+          packages: ''
+          accept-android-sdk-licenses: true
+
+      - name: Exact source dependency installation
+        run: npm ci --no-fund
+
+      - name: Fail-closed source and product regression gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run check
+          npm test 2>&1 | tee "$EVIDENCE/npm-test.txt"
+          grep -F 'ℹ tests 149' "$EVIDENCE/npm-test.txt"
+          grep -F 'ℹ pass 149' "$EVIDENCE/npm-test.txt"
+          grep -F 'ℹ fail 0' "$EVIDENCE/npm-test.txt"
+          grep -F 'ℹ skipped 0' "$EVIDENCE/npm-test.txt"
+          grep -F 'legacy PIN gate and throttle startup behaviour cannot reappear' "$EVIDENCE/npm-test.txt"
+          grep -F 'normal startup remains unlocked unless optional app lock is enabled and due' "$EVIDENCE/npm-test.txt"
+          grep -F 'optional device-authentication app-lock controls remain available in settings' "$EVIDENCE/npm-test.txt"
+          grep -F 'protected AI settings use device authentication rather than a PIN modal' "$EVIDENCE/npm-test.txt"
+
+      - name: Expo compatibility and bundle verification
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx expo install --check
+          npx --yes expo-doctor@1.20.4 | tee "$EVIDENCE/expo-doctor.txt"
+          npx expo export --platform android --output-dir dist-recovery
+          find dist-recovery -type f | sort | tee "$EVIDENCE/export-files.txt"
+          find dist-recovery -type f \( -name '*.js' -o -name '*.hbc' \) | grep -q .
+
+      - name: Install Android and emulator prerequisites
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null 2>&1 || true
+          sdkmanager 'platform-tools' 'platforms;android-36' 'build-tools;36.0.0' 'emulator' "$API36_IMAGE" "$PS16K_IMAGE"
+          sdkmanager --list_installed > "$EVIDENCE/android-sdk-installed.txt"
+
+      - name: Select emulator acceleration
+        shell: bash
+        run: |
+          set -euo pipefail
+          ls -l /dev/kvm > "$EVIDENCE/kvm.txt" 2>&1 || true
+          if [[ -e /dev/kvm ]]; then sudo chmod 666 /dev/kvm || true; fi
+          "$ANDROID_HOME/emulator/emulator" -accel-check > "$EVIDENCE/emulator-accel-check.txt" 2>&1 || true
+          mode=off
+          if [[ -c /dev/kvm && -r /dev/kvm && -w /dev/kvm ]]; then mode=on; fi
+          echo "EMULATOR_ACCEL_MODE=$mode" | tee "$EVIDENCE/emulator-accel-mode.txt"
+          echo "EMULATOR_ACCEL_MODE=$mode" >> "$GITHUB_ENV"
+
+      - name: Generate Android project from exact recovery source
+        env:
+          EXPO_NO_GIT_STATUS: '1'
+        run: npx expo prebuild --platform android --clean --no-install
+
+      - name: Verify generated Android SDK 36 configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -RInE 'compileSdk(Version)?[ =]+36|compileSdk[[:space:]]+36' android | tee "$EVIDENCE/compile-sdk.txt"
+          grep -RInE 'targetSdk(Version)?[ =]+36|targetSdk[[:space:]]+36' android | tee "$EVIDENCE/target-sdk.txt"
+
+      - name: Build fresh recovery debug APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x android/gradlew
+          (cd android && ./gradlew app:assembleDebug --no-daemon --max-workers=2)
+          APK=android/app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          cp "$APK" "$APK_NAME"
+          echo "APK_PATH=$APK_NAME" >> "$GITHUB_ENV"
+
+      - name: Verify APK identity signing bundle and 16-KB binaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          AAPT="$ANDROID_HOME/build-tools/36.0.0/aapt2"
+          APKSIGNER="$ANDROID_HOME/build-tools/36.0.0/apksigner"
+          ZIPALIGN="$ANDROID_HOME/build-tools/36.0.0/zipalign"
+          "$AAPT" dump badging "$APK_PATH" | tee "$EVIDENCE/apk-badging.txt"
+          grep -F "package: name='$PACKAGE_NAME' versionCode='$VERSION_CODE' versionName='$VERSION_NAME'" "$EVIDENCE/apk-badging.txt"
+          "$APKSIGNER" verify --verbose --print-certs "$APK_PATH" | tee "$EVIDENCE/apk-signing.txt"
+          grep -qi 'Android Debug' "$EVIDENCE/apk-signing.txt"
+          rm -rf "$EVIDENCE/apk-unpacked"
+          mkdir -p "$EVIDENCE/apk-unpacked"
+          unzip -q "$APK_PATH" -d "$EVIDENCE/apk-unpacked"
+          find "$EVIDENCE/apk-unpacked" -type f \( -name '*.js' -o -name '*.hbc' -o -name 'index.android.bundle' \) | grep -q .
+          "$ZIPALIGN" -c -P 16 -v 4 "$APK_PATH" > "$EVIDENCE/zipalign-16k.txt"
+          failures=0
+          while IFS= read -r so; do
+            rel="${so#"$EVIDENCE/apk-unpacked/"}"
+            case "$rel" in
+              lib/arm64-v8a/*|lib/x86_64/*)
+                while read -r align; do
+                  [[ -n "$align" ]] || continue
+                  if (( align < 16384 )); then
+                    echo "FAIL $rel LOAD_ALIGN=$align" | tee -a "$EVIDENCE/elf-16k.txt"
+                    failures=1
+                  fi
+                done < <(readelf -lW "$so" | awk '$1=="LOAD"{print $NF}')
+                ;;
+            esac
+          done < <(find "$EVIDENCE/apk-unpacked/lib" -type f -name '*.so' | sort)
+          test "$failures" -eq 0
+          sha256sum "$APK_PATH" | tee "$EVIDENCE/apk-sha256.txt"
+
+      - name: Android 16 API 36 cold launch and real-app readiness
+        timeout-minutes: 25
+        shell: bash
+        run: |
+          set -euo pipefail
+          export ANDROID_AVD_HOME="$HOME/.android/avd"
+          mkdir -p "$ANDROID_AVD_HOME"
+          rm -rf "$ANDROID_AVD_HOME/recovery-api36.avd" "$ANDROID_AVD_HOME/recovery-api36.ini"
+          printf 'no\n' | avdmanager create avd --force --name recovery-api36 --package "$API36_IMAGE" --device pixel_2 | tee "$EVIDENCE/api36-avd-create.txt"
+          test -f "$ANDROID_AVD_HOME/recovery-api36.ini"
+          printf '\nhw.ramSize=4096\nvm.heapSize=512\nhw.cpu.ncore=2\n' >> "$ANDROID_AVD_HOME/recovery-api36.avd/config.ini"
+          "$ANDROID_HOME/emulator/emulator" -list-avds | tee "$EVIDENCE/api36-avd-list.txt"
+          grep -Fx 'recovery-api36' "$EVIDENCE/api36-avd-list.txt"
+          adb kill-server || true
+          adb start-server
+          nohup "$ANDROID_HOME/emulator/emulator" -avd recovery-api36 -memory 4096 -cores 2 -no-window -no-audio -no-boot-anim -no-snapshot -accel "$EMULATOR_ACCEL_MODE" -gpu swiftshader_indirect > "$EVIDENCE/api36-emulator.log" 2>&1 &
+          EMU_PID=$!
+          echo "$EMU_PID" > "$EVIDENCE/api36-emulator.pid"
+          timeout 180 bash -c 'until adb get-state >/dev/null 2>&1; do kill -0 '"$EMU_PID"' >/dev/null 2>&1 || { cat '"$EVIDENCE"'/api36-emulator.log; exit 1; }; sleep 2; done'
+          timeout 480 bash -c 'until [[ "$(adb shell getprop sys.boot_completed | tr -d "\r")" == "1" ]]; do kill -0 '"$EMU_PID"' >/dev/null 2>&1 || { cat '"$EVIDENCE"'/api36-emulator.log; exit 1; }; sleep 5; done'
+          test "$(adb shell getprop ro.build.version.sdk | tr -d '\r')" = '36'
+          adb shell cat /proc/meminfo | tee "$EVIDENCE/api36-meminfo-before.txt"
+          adb install -r "$APK_PATH" | tee "$EVIDENCE/api36-install.txt"
+          adb logcat -c
+          adb shell input keyevent KEYCODE_WAKEUP || true
+          adb shell wm dismiss-keyguard || true
+          adb shell am start -W -S -n "$PACKAGE_NAME/.MainActivity" | tee "$EVIDENCE/api36-start.txt"
+          grep -F 'Status: ok' "$EVIDENCE/api36-start.txt"
+          sleep 30
+          adb logcat -d > "$EVIDENCE/api36-logcat.txt"
+          APP_PID="$(adb shell pidof "$PACKAGE_NAME" | tr -d '\r[:space:]')"
+          test -n "$APP_PID"
+          awk -v pid="$APP_PID" '$3 == pid' "$EVIDENCE/api36-logcat.txt" > "$EVIDENCE/api36-app-logcat.txt"
+          ! grep -Eqi 'FATAL EXCEPTION|UnsatisfiedLinkError|NoClassDefFoundError|ActivityNotFoundException|ReactNativeJS.*(TypeError|ReferenceError|RangeError|SyntaxError|Invariant Violation|Fatal)|SIGSEGV|ANR' "$EVIDENCE/api36-app-logcat.txt"
+          ! grep -Eqi "Process: ${PACKAGE_NAME}.*has died|am_crash.*${PACKAGE_NAME}|am_anr.*${PACKAGE_NAME}|lowmemorykiller: Kill '${PACKAGE_NAME}'" "$EVIDENCE/api36-logcat.txt"
+          ready=0
+          for attempt in $(seq 1 15); do
+            adb shell uiautomator dump /sdcard/recovery-window.xml >/dev/null 2>&1 || true
+            adb pull /sdcard/recovery-window.xml "$EVIDENCE/api36-window.xml" >/dev/null 2>&1 || true
+            set +e
+            node scripts/verify-app-ready-ui.mjs "$EVIDENCE/api36-window.xml" > "$EVIDENCE/api36-ready-probe.txt" 2>&1
+            rc=$?
+            set -e
+            if [[ "$rc" -eq 0 ]]; then ready=1; break; fi
+            if [[ "$rc" -eq 2 ]]; then cat "$EVIDENCE/api36-ready-probe.txt"; exit 1; fi
+            [[ "$rc" -eq 3 ]] || exit "$rc"
+            sleep 5
+          done
+          test "$ready" -eq 1
+          echo 'ANDROID_16_API36_APP_READY=PASS' | tee "$EVIDENCE/api36-acceptance.txt"
+          adb emu kill || true
+          sleep 10
+
+      - name: Dedicated 16-KB page-size cold launch and real-app readiness
+        timeout-minutes: 25
+        shell: bash
+        run: |
+          set -euo pipefail
+          export ANDROID_AVD_HOME="$HOME/.android/avd"
+          mkdir -p "$ANDROID_AVD_HOME"
+          rm -rf "$ANDROID_AVD_HOME/recovery-ps16k.avd" "$ANDROID_AVD_HOME/recovery-ps16k.ini"
+          printf 'no\n' | avdmanager create avd --force --name recovery-ps16k --package "$PS16K_IMAGE" --device pixel_2 | tee "$EVIDENCE/ps16k-avd-create.txt"
+          test -f "$ANDROID_AVD_HOME/recovery-ps16k.ini"
+          printf '\nhw.ramSize=4096\nvm.heapSize=512\nhw.cpu.ncore=2\n' >> "$ANDROID_AVD_HOME/recovery-ps16k.avd/config.ini"
+          "$ANDROID_HOME/emulator/emulator" -list-avds | tee "$EVIDENCE/ps16k-avd-list.txt"
+          grep -Fx 'recovery-ps16k' "$EVIDENCE/ps16k-avd-list.txt"
+          adb kill-server || true
+          adb start-server
+          nohup "$ANDROID_HOME/emulator/emulator" -avd recovery-ps16k -memory 4096 -cores 2 -no-window -no-audio -no-boot-anim -no-snapshot -accel "$EMULATOR_ACCEL_MODE" -gpu swiftshader_indirect > "$EVIDENCE/ps16k-emulator.log" 2>&1 &
+          EMU_PID=$!
+          echo "$EMU_PID" > "$EVIDENCE/ps16k-emulator.pid"
+          timeout 180 bash -c 'until adb get-state >/dev/null 2>&1; do kill -0 '"$EMU_PID"' >/dev/null 2>&1 || { cat '"$EVIDENCE"'/ps16k-emulator.log; exit 1; }; sleep 2; done'
+          timeout 480 bash -c 'until [[ "$(adb shell getprop sys.boot_completed | tr -d "\r")" == "1" ]]; do kill -0 '"$EMU_PID"' >/dev/null 2>&1 || { cat '"$EVIDENCE"'/ps16k-emulator.log; exit 1; }; sleep 5; done'
+          PAGE_SIZE="$(adb shell getconf PAGE_SIZE | tr -d '\r[:space:]')"
+          echo "PAGE_SIZE=$PAGE_SIZE" | tee "$EVIDENCE/ps16k-page-size.txt"
+          test "$PAGE_SIZE" = '16384'
+          adb shell cat /proc/meminfo | tee "$EVIDENCE/ps16k-meminfo-before.txt"
+          adb install -r "$APK_PATH" | tee "$EVIDENCE/ps16k-install.txt"
+          adb logcat -c
+          adb shell input keyevent KEYCODE_WAKEUP || true
+          adb shell wm dismiss-keyguard || true
+          adb shell am start -W -S -n "$PACKAGE_NAME/.MainActivity" | tee "$EVIDENCE/ps16k-start.txt"
+          grep -F 'Status: ok' "$EVIDENCE/ps16k-start.txt"
+          sleep 30
+          adb logcat -d > "$EVIDENCE/ps16k-logcat.txt"
+          APP_PID="$(adb shell pidof "$PACKAGE_NAME" | tr -d '\r[:space:]')"
+          test -n "$APP_PID"
+          awk -v pid="$APP_PID" '$3 == pid' "$EVIDENCE/ps16k-logcat.txt" > "$EVIDENCE/ps16k-app-logcat.txt"
+          ! grep -Eqi 'FATAL EXCEPTION|UnsatisfiedLinkError|NoClassDefFoundError|ActivityNotFoundException|ReactNativeJS.*(TypeError|ReferenceError|RangeError|SyntaxError|Invariant Violation|Fatal)|SIGSEGV|ANR' "$EVIDENCE/ps16k-app-logcat.txt"
+          ! grep -Eqi "Process: ${PACKAGE_NAME}.*has died|am_crash.*${PACKAGE_NAME}|am_anr.*${PACKAGE_NAME}|lowmemorykiller: Kill '${PACKAGE_NAME}'" "$EVIDENCE/ps16k-logcat.txt"
+          ready=0
+          for attempt in $(seq 1 15); do
+            adb shell uiautomator dump /sdcard/recovery-window.xml >/dev/null 2>&1 || true
+            adb pull /sdcard/recovery-window.xml "$EVIDENCE/ps16k-window.xml" >/dev/null 2>&1 || true
+            set +e
+            node scripts/verify-app-ready-ui.mjs "$EVIDENCE/ps16k-window.xml" > "$EVIDENCE/ps16k-ready-probe.txt" 2>&1
+            rc=$?
+            set -e
+            if [[ "$rc" -eq 0 ]]; then ready=1; break; fi
+            if [[ "$rc" -eq 2 ]]; then cat "$EVIDENCE/ps16k-ready-probe.txt"; exit 1; fi
+            [[ "$rc" -eq 3 ]] || exit "$rc"
+            sleep 5
+          done
+          test "$ready" -eq 1
+          echo 'ANDROID_16K_APP_READY=PASS' | tee "$EVIDENCE/ps16k-acceptance.txt"
+          adb emu kill || true
+
+      - name: Final acceptance evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -F 'ANDROID_16_API36_APP_READY=PASS' "$EVIDENCE/api36-acceptance.txt"
+          grep -F 'ANDROID_16K_APP_READY=PASS' "$EVIDENCE/ps16k-acceptance.txt"
+          echo 'RECOVERY_PRODUCT_TECHNICAL_ACCEPTANCE=PASS' | tee "$EVIDENCE/final-acceptance.txt"
+
+      - name: Upload fresh accepted recovery APK
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: DR_STONES_COMMAND_CENTRE_V1_5_4_UX_RECOVERY_PREVIEW_DEBUG
+          path: ${{ env.APK_NAME }}
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: DR_STONES_COMMAND_CENTRE_V1_5_4_UX_RECOVERY_ACCEPTANCE_EVIDENCE_RAMFIX
+          path: recovery-acceptance-evidence/**
+          if-no-files-found: warn
+          retention-days: 30
