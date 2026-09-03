@@ -34,14 +34,10 @@ jobs:
           set -euo pipefail
           mkdir -p "$EVIDENCE_DIR"
           find ci/dr-stone-build31/exact -maxdepth 1 -type f -printf '%f %s\n' | sort | tee "$EVIDENCE_DIR/transport-segment-sizes.txt"
-
-          # Raw chunks 03 and 04 were already present as byte-exact Git objects.
           test "$(git hash-object ci/dr-stone-build31/source.part04.bin)" = "04d06eca387e24218f323533287e8d4afcfecc32"
           test "$(stat -c %s ci/dr-stone-build31/source.part04.bin)" -eq 7500
           test "$(git hash-object ci/dr-stone-build31/source.part05.bin)" = "4a4cc00a5fb0fe39e7cc86bcd804a3a97c8e7731"
           test "$(stat -c %s ci/dr-stone-build31/source.part05.bin)" -eq 7500
-
-          # Rebuild the four corrected encoded chunks from five verified 2,000-char pieces.
           for i in 08 11 22 26; do
             cat ci/dr-stone-build31/exact/source.part${i}{a,b,c,d,e}.b64 > "/tmp/source.part${i}.b64"
             test "$(stat -c %s "/tmp/source.part${i}.b64")" -eq 10000
@@ -50,7 +46,6 @@ jobs:
           echo "$CHUNK11_B64_SHA256  /tmp/source.part11.b64" | sha256sum -c - | tee "$EVIDENCE_DIR/chunk11-sha256-verdict.txt"
           echo "$CHUNK22_B64_SHA256  /tmp/source.part22.b64" | sha256sum -c - | tee "$EVIDENCE_DIR/chunk22-sha256-verdict.txt"
           echo "$CHUNK26_B64_SHA256  /tmp/source.part26.b64" | sha256sum -c - | tee "$EVIDENCE_DIR/chunk26-sha256-verdict.txt"
-
           : > build31_compile_min.zip
           for i in 00 01 02; do base64 --decode "ci/dr-stone-build31/exact/source.part${i}.b64" >> build31_compile_min.zip; done
           cat ci/dr-stone-build31/source.part04.bin >> build31_compile_min.zip
@@ -64,13 +59,11 @@ jobs:
           for i in 23 24 25; do base64 --decode "ci/dr-stone-build31/exact/source.part${i}.b64" >> build31_compile_min.zip; done
           base64 --decode /tmp/source.part26.b64 >> build31_compile_min.zip
           base64 --decode ci/dr-stone-build31/exact/source.part27.b64 >> build31_compile_min.zip
-
           stat -c 'SOURCE_BYTES=%s' build31_compile_min.zip | tee "$EVIDENCE_DIR/source-size.txt"
           sha256sum build31_compile_min.zip | tee "$EVIDENCE_DIR/source-sha256-observed.txt"
           test "$(stat -c %s build31_compile_min.zip)" -eq 209261
           echo "$SOURCE_SHA256  build31_compile_min.zip" | sha256sum -c - | tee "$EVIDENCE_DIR/source-sha256-verdict.txt"
           unzip -t build31_compile_min.zip | tee "$EVIDENCE_DIR/source-zip-integrity.txt"
-
           rm -rf build31 && mkdir build31
           unzip -q build31_compile_min.zip -d build31
           chmod +x build31/gradlew
@@ -79,6 +72,35 @@ jobs:
           grep -F 'versionName = "0.3.0"' build31/app/build.gradle.kts | tee -a "$EVIDENCE_DIR/source-identity.txt"
           grep -F 'compileSdk = 36' build31/app/build.gradle.kts | tee -a "$EVIDENCE_DIR/source-identity.txt"
           grep -F 'targetSdk = 36' build31/app/build.gradle.kts | tee -a "$EVIDENCE_DIR/source-identity.txt"
+
+      - name: Apply Build31 compile remediation
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('build31/app/src/main/java/com/nexarenew/aiconsole/ui/media/GeneratedImageController.kt')
+          s = p.read_text()
+          old = '''            workspaceId = workspaceIdProvider(),\n            chatId = chatId,\n            prompt = prompt.trim(),'''
+          new = '''            workspaceId = workspaceIdProvider(),\n            chatId = chatId,\n            messageId = null,\n            prompt = prompt.trim(),'''
+          if old not in s:
+              raise SystemExit('GeneratedImageController compile-remediation anchor missing')
+          p.write_text(s.replace(old, new, 1))
+
+          p = Path('build31/app/src/main/java/com/nexarenew/aiconsole/ui/screens/SettingsScreen.kt')
+          s = p.read_text()
+          old = '''            if (bitmap != null) {\n                Spacer(Modifier.height(6.dp))\n                Image(bitmap.asImageBitmap(), contentDescription = "Generated image", contentScale = ContentScale.Fit, modifier = Modifier.fillMaxWidth().heightIn(max = if (compact) 220.dp else 360.dp))\n            }'''
+          new = '''            bitmap?.let { preview ->\n                Spacer(Modifier.height(6.dp))\n                Image(preview.asImageBitmap(), contentDescription = "Generated image", contentScale = ContentScale.Fit, modifier = Modifier.fillMaxWidth().heightIn(max = if (compact) 220.dp else 360.dp))\n            }'''
+          if old not in s:
+              raise SystemExit('SettingsScreen compile-remediation anchor missing')
+          p.write_text(s.replace(old, new, 1))
+          PY
+          sha256sum \
+            build31/app/src/main/java/com/nexarenew/aiconsole/ui/media/GeneratedImageController.kt \
+            build31/app/src/main/java/com/nexarenew/aiconsole/ui/screens/SettingsScreen.kt \
+            | tee "$EVIDENCE_DIR/compile-remediation-file-sha256.txt"
+          grep -n -F 'messageId = null' build31/app/src/main/java/com/nexarenew/aiconsole/ui/media/GeneratedImageController.kt | tee "$EVIDENCE_DIR/compile-remediation-verdict.txt"
+          grep -n -F 'bitmap?.let { preview ->' build31/app/src/main/java/com/nexarenew/aiconsole/ui/screens/SettingsScreen.kt | tee -a "$EVIDENCE_DIR/compile-remediation-verdict.txt"
 
       - name: Set up Java 21
         uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
