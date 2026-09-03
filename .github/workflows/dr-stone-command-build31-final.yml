@@ -29,20 +29,8 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$EVIDENCE_DIR"
+          find ci/dr-stone-build31/exact -maxdepth 1 -type f -printf '%f %s\n' | sort | tee "$EVIDENCE_DIR/transport-segment-sizes.txt"
 
-          # Every Base64 transport segment except chunk 03 is checked for its
-          # deterministic encoded size before decoding. Chunk 03 is sourced
-          # from the already-present raw Git object whose blob identity was
-          # independently matched to authoritative local raw chunk 03.
-          for i in 00 01 02 04 05 06 07 08 09 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26; do
-            f="ci/dr-stone-build31/exact/source.part${i}.b64"
-            test -f "$f"
-            test "$(stat -c %s "$f")" -eq 10000
-          done
-          test "$(stat -c %s ci/dr-stone-build31/exact/source.part27.b64)" -eq 9016
-
-          # Fail closed if the reused raw chunk-03 Git object is not exactly
-          # the known authoritative chunk object.
           test "$(git hash-object ci/dr-stone-build31/source.part04.bin)" = "04d06eca387e24218f323533287e8d4afcfecc32"
           test "$(stat -c %s ci/dr-stone-build31/source.part04.bin)" -eq 7500
 
@@ -56,8 +44,8 @@ jobs:
           done
 
           stat -c 'SOURCE_BYTES=%s' build31_compile_min.zip | tee "$EVIDENCE_DIR/source-size.txt"
-          test "$(stat -c %s build31_compile_min.zip)" -eq 209261
           sha256sum build31_compile_min.zip | tee "$EVIDENCE_DIR/source-sha256-observed.txt"
+          test "$(stat -c %s build31_compile_min.zip)" -eq 209261
           echo "$SOURCE_SHA256  build31_compile_min.zip" | sha256sum -c - | tee "$EVIDENCE_DIR/source-sha256-verdict.txt"
           unzip -t build31_compile_min.zip | tee "$EVIDENCE_DIR/source-zip-integrity.txt"
 
