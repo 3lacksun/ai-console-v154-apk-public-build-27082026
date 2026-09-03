@@ -68,7 +68,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          printf '%s  %s\n' 'c4fbdb98923fafc23f13db29657fa22d6389a7d828396709ac3ef5e9786117f6' '.ci/device-layout-remediation.patch' | sha256sum -c -
+          printf '%s  %s\n' '44ad87ff57a480504b23df0fa572b1afc807b50ea503660f93a976cc2804d1cb' '.ci/device-layout-remediation.patch' | sha256sum -c -
           git apply --check .ci/device-layout-remediation.patch
           git apply .ci/device-layout-remediation.patch
 
