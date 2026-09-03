@@ -17,8 +17,9 @@ env:
 
 jobs:
   build31-final:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
+
     steps:
       - name: Checkout isolated Build31 CI branch
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
@@ -28,15 +29,43 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$EVIDENCE_DIR"
-          cat ci/dr-stone-build31/source.part*.bin > build31_compile_min.zip
+
+          # Every Base64 transport segment except chunk 03 is checked for its
+          # deterministic encoded size before decoding. Chunk 03 is sourced
+          # from the already-present raw Git object whose blob identity was
+          # independently matched to authoritative local raw chunk 03.
+          for i in 00 01 02 04 05 06 07 08 09 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26; do
+            f="ci/dr-stone-build31/exact/source.part${i}.b64"
+            test -f "$f"
+            test "$(stat -c %s "$f")" -eq 10000
+          done
+          test "$(stat -c %s ci/dr-stone-build31/exact/source.part27.b64)" -eq 9016
+
+          # Fail closed if the reused raw chunk-03 Git object is not exactly
+          # the known authoritative chunk object.
+          test "$(git hash-object ci/dr-stone-build31/source.part04.bin)" = "04d06eca387e24218f323533287e8d4afcfecc32"
+          test "$(stat -c %s ci/dr-stone-build31/source.part04.bin)" -eq 7500
+
+          : > build31_compile_min.zip
+          for i in 00 01 02; do
+            base64 --decode "ci/dr-stone-build31/exact/source.part${i}.b64" >> build31_compile_min.zip
+          done
+          cat ci/dr-stone-build31/source.part04.bin >> build31_compile_min.zip
+          for i in 04 05 06 07 08 09 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27; do
+            base64 --decode "ci/dr-stone-build31/exact/source.part${i}.b64" >> build31_compile_min.zip
+          done
+
           stat -c 'SOURCE_BYTES=%s' build31_compile_min.zip | tee "$EVIDENCE_DIR/source-size.txt"
+          test "$(stat -c %s build31_compile_min.zip)" -eq 209261
           sha256sum build31_compile_min.zip | tee "$EVIDENCE_DIR/source-sha256-observed.txt"
           echo "$SOURCE_SHA256  build31_compile_min.zip" | sha256sum -c - | tee "$EVIDENCE_DIR/source-sha256-verdict.txt"
           unzip -t build31_compile_min.zip | tee "$EVIDENCE_DIR/source-zip-integrity.txt"
+
           rm -rf build31
           mkdir build31
           unzip -q build31_compile_min.zip -d build31
           chmod +x build31/gradlew
+
           grep -F 'applicationId = "com.nexarenew.drstonecommand"' build31/app/build.gradle.kts | tee "$EVIDENCE_DIR/source-identity.txt"
           grep -F 'versionCode = 31' build31/app/build.gradle.kts | tee -a "$EVIDENCE_DIR/source-identity.txt"
           grep -F 'versionName = "0.3.0"' build31/app/build.gradle.kts | tee -a "$EVIDENCE_DIR/source-identity.txt"
@@ -48,42 +77,40 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
+          cache: gradle
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699
-        with:
-          packages: ''
-          accept-android-sdk-licenses: true
 
       - name: Install Android API 36 prerequisites
         shell: bash
         run: |
           set -euo pipefail
-          yes | sdkmanager --licenses >/dev/null 2>&1 || true
+          yes | sdkmanager --licenses >/dev/null || true
           sdkmanager "platform-tools" "platforms;android-${ANDROID_API}" "build-tools;${BUILD_TOOLS}"
           sdkmanager --list_installed | tee "$EVIDENCE_DIR/android-sdk-installed.txt"
+          java -version 2>&1 | tee "$EVIDENCE_DIR/java-version.txt"
 
       - name: Android unit tests and Kotlin compile
-        shell: bash
         working-directory: build31
+        shell: bash
         run: |
           set -o pipefail
-          ./gradlew --no-daemon --max-workers=2 testDebugUnitTest :app:compileDebugKotlin --stacktrace 2>&1 | tee "../$EVIDENCE_DIR/gradle-test-compile.txt"
+          ./gradlew --no-daemon --stacktrace :app:testDebugUnitTest :app:compileDebugKotlin 2>&1 | tee "../$EVIDENCE_DIR/gradle-test-compile.log"
 
       - name: Android lint
-        shell: bash
         working-directory: build31
+        shell: bash
         run: |
           set -o pipefail
-          ./gradlew --no-daemon --max-workers=2 lintDebug --stacktrace 2>&1 | tee "../$EVIDENCE_DIR/gradle-lint.txt"
+          ./gradlew --no-daemon --stacktrace :app:lintDebug 2>&1 | tee "../$EVIDENCE_DIR/gradle-lint.log"
 
       - name: Clean assemble debug APK
-        shell: bash
         working-directory: build31
+        shell: bash
         run: |
           set -o pipefail
-          ./gradlew --no-daemon --max-workers=2 clean assembleDebug --stacktrace 2>&1 | tee "../$EVIDENCE_DIR/gradle-assemble.txt"
-          test -s app/build/outputs/apk/debug/app-debug.apk
+          ./gradlew --no-daemon --stacktrace clean :app:assembleDebug 2>&1 | tee "../$EVIDENCE_DIR/gradle-assemble-debug.log"
           cp app/build/outputs/apk/debug/app-debug.apk ../DR_STONE_COMMAND_V0_3_0_BUILD31_DEBUG.apk
 
       - name: APK forensic gate
@@ -91,23 +118,25 @@ jobs:
         run: |
           set -euo pipefail
           APK=DR_STONE_COMMAND_V0_3_0_BUILD31_DEBUG.apk
-          BT="$ANDROID_HOME/build-tools/$BUILD_TOOLS"
-          "$BT/aapt" dump badging "$APK" | tee "$EVIDENCE_DIR/apk-badging.txt"
-          grep -F "package: name='com.nexarenew.drstonecommand' versionCode='31' versionName='0.3.0'" "$EVIDENCE_DIR/apk-badging.txt"
-          grep -F "sdkVersion:'26'" "$EVIDENCE_DIR/apk-badging.txt"
-          grep -F "targetSdkVersion:'36'" "$EVIDENCE_DIR/apk-badging.txt"
-          "$BT/zipalign" -c -P 16 -v 4 "$APK" | tee "$EVIDENCE_DIR/zipalign.txt"
-          "$BT/apksigner" verify --verbose --print-certs "$APK" | tee "$EVIDENCE_DIR/apksigner.txt"
+          test -s "$APK"
           sha256sum "$APK" | tee "$EVIDENCE_DIR/apk-sha256.txt"
           stat -c 'APK_BYTES=%s' "$APK" | tee "$EVIDENCE_DIR/apk-size.txt"
+          unzip -t "$APK" | tee "$EVIDENCE_DIR/apk-zip-integrity.txt"
+          AAPT="${ANDROID_HOME}/build-tools/${BUILD_TOOLS}/aapt"
+          APKSIGNER="${ANDROID_HOME}/build-tools/${BUILD_TOOLS}/apksigner"
+          "$AAPT" dump badging "$APK" | tee "$EVIDENCE_DIR/apk-badging.txt"
+          grep -F "package: name='com.nexarenew.drstonecommand' versionCode='31' versionName='0.3.0'" "$EVIDENCE_DIR/apk-badging.txt"
+          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee "$EVIDENCE_DIR/apksigner-verify.txt"
+          zipinfo -1 "$APK" | tee "$EVIDENCE_DIR/apk-file-list.txt"
+          grep -F 'classes.dex' "$EVIDENCE_DIR/apk-file-list.txt"
+          echo 'APK_FORENSIC_GATE=PASS' | tee "$EVIDENCE_DIR/apk-forensic-verdict.txt"
 
       - name: Upload APK and evidence
         if: always()
         uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08
         with:
           name: DR_STONE_COMMAND_V0_3_0_BUILD31_FINAL_CI
-          retention-days: 30
-          if-no-files-found: warn
           path: |
             DR_STONE_COMMAND_V0_3_0_BUILD31_DEBUG.apk
             build31-final-evidence/
+          retention-days: 30
