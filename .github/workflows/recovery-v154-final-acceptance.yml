@@ -14,7 +14,7 @@ env:
   RECOVERY_REF: ux-regression-recovery-03092026
   PACKAGE_NAME: com.nexarenew.aiconsole
   VERSION_NAME: 1.5.4
-  VERSION_CODE: '19'
+  VERSION_CODE: '22'
   API36_IMAGE: system-images;android-36;google_apis;x86_64
   PS16K_IMAGE: system-images;android-35;google_apis_ps16k;x86_64
   APK_NAME: DR_STONES_COMMAND_CENTRE_V1_5_4_UX_RECOVERY_PREVIEW_DEBUG.apk
