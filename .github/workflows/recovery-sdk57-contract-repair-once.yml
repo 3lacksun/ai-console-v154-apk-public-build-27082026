@@ -1,0 +1,158 @@
+name: Recovery SDK57 Contract Repair Once
+
+on:
+  push:
+    branches:
+      - ux-regression-recovery-03092026
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  repair:
+    if: github.event_name == 'workflow_dispatch' || github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout recovery branch with authoritative history
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ux-regression-recovery-03092026
+          fetch-depth: 0
+
+      - name: Set up Node 24
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Restore complete fail-closed checker from known-good recovery authority
+        shell: bash
+        run: |
+          set -euo pipefail
+          AUTHORITY=bf7c8a9cf038dcc7eafc07ce8a84f1ac21cbf229
+          git cat-file -e "$AUTHORITY^{commit}"
+          git show "$AUTHORITY:scripts/static-check.mjs" > scripts/static-check.mjs
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('scripts/static-check.mjs')
+          s=p.read_text(encoding='utf-8')
+          old="pkg.dependencies?.['expo-asset']==='~57.0.15'"
+          new="pkg.dependencies?.['expo-asset']==='~57.0.16'"
+          if s.count(old) != 1:
+              raise SystemExit(f'expected exactly one authoritative expo-asset assertion, found {s.count(old)}')
+          p.write_text(s.replace(old,new),encoding='utf-8')
+          PY
+          test "$(git show "$AUTHORITY:scripts/static-check.mjs" | wc -c)" -gt 10000
+          test "$(wc -c < scripts/static-check.mjs)" -gt 10000
+
+      - name: Install current dependency lock
+        run: npm ci --no-fund
+
+      - name: Align only Expo SDK 57 patch dependencies required by Expo
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --save \
+            'expo@~57.0.19' \
+            'expo-asset@~57.0.16' \
+            'expo-build-properties@~57.0.16' \
+            'expo-constants@~57.0.17' \
+            'expo-image-picker@~57.0.15' \
+            'expo-secure-store@~57.0.3' \
+            'expo-sharing@~57.0.17'
+
+      - name: Reseal existing integrity manifests from repaired recovery contents
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib,re
+          manifests=[Path('HANDOVER_SHA256SUMS.txt'),Path('SHA256SUMS_EXEC002.txt')]
+          pattern=re.compile(r'^([0-9a-fA-F]{64})(\s+)(.+)$')
+          for manifest in manifests:
+              if not manifest.is_file():
+                  raise SystemExit(f'missing integrity manifest: {manifest}')
+              out=[]
+              for n,raw in enumerate(manifest.read_text(encoding='utf-8').splitlines(),1):
+                  if not raw.strip() or raw.lstrip().startswith('#'):
+                      out.append(raw); continue
+                  m=pattern.match(raw)
+                  if not m:
+                      raise SystemExit(f'{manifest}:{n}: malformed checksum line')
+                  target=Path(m.group(3))
+                  if not target.is_file():
+                      raise SystemExit(f'{manifest}:{n}: sealed file missing: {target}')
+                  out.append(f'{hashlib.sha256(target.read_bytes()).hexdigest()}  {target}')
+              manifest.write_text('\n'.join(out)+'\n',encoding='utf-8')
+          PY
+
+      - name: Prove Expo SDK compatibility
+        run: npx expo install --check
+
+      - name: Prove complete fail-closed static contract
+        run: npm run check
+
+      - name: Prove full source regression suite with zero skips
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm test 2>&1 | tee recovery-sdk57-tests.txt
+          grep -Eq '^# tests 149$' recovery-sdk57-tests.txt
+          grep -Eq '^# pass 149$' recovery-sdk57-tests.txt
+          grep -Eq '^# fail 0$' recovery-sdk57-tests.txt
+          grep -Eq '^# skipped 0$' recovery-sdk57-tests.txt
+          for required in \
+            'legacy PIN gate and throttle startup behaviour cannot reappear' \
+            'normal startup remains unlocked unless optional app lock is enabled and due' \
+            'optional device-authentication app-lock controls remain available in settings' \
+            'protected AI settings use device authentication rather than a PIN modal'; do
+            grep -F "$required" recovery-sdk57-tests.txt >/dev/null
+          done
+
+      - name: Restrict validated source repair diff
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          changed="$(git diff --name-only | sort)"
+          printf '%s\n' "$changed"
+          unexpected="$(printf '%s\n' "$changed" | grep -Ev '^(scripts/static-check\.mjs|package\.json|package-lock\.json|HANDOVER_SHA256SUMS\.txt|SHA256SUMS_EXEC002\.txt)$' || true)"
+          if [ -n "$unexpected" ]; then
+            echo 'Unexpected recovery files changed:' >&2
+            printf '%s\n' "$unexpected" >&2
+            exit 1
+          fi
+          for required in scripts/static-check.mjs package.json package-lock.json; do
+            printf '%s\n' "$changed" | grep -Fx "$required" >/dev/null
+          done
+
+      - name: Commit only validated recovery repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add scripts/static-check.mjs package.json package-lock.json HANDOVER_SHA256SUMS.txt SHA256SUMS_EXEC002.txt
+          git commit -m 'Align recovery SDK 57 contracts'
+          git push origin HEAD:ux-regression-recovery-03092026
+
+      - name: Dispatch fail-closed APK acceptance workflow against repaired recovery HEAD
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          RECOVERY_REF: ux-regression-recovery-03092026
+        shell: bash
+        run: |
+          set -euo pipefail
+          payload=$(printf '{"ref":"%s","inputs":{"signing_mode":"preview","run_emulator_checks":"true","publish_diagnostic_artifact":"false"}}' "$RECOVERY_REF")
+          curl --fail-with-body -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/$REPOSITORY/actions/workflows/android-apk.yml/dispatches" \
+            -d "$payload"
+          echo 'RECOVERY_REPAIRED_APK_DISPATCH=PASS'
