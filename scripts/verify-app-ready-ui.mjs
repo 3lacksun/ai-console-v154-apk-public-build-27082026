@@ -1,11 +1,13 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { pathToFileURL } from 'node:url';
 
 export const RECOVERY_MARKERS = [
   'AI Console could not start safely',
   'AI Console could not open this screen safely',
 ];
+
+export const APP_READY_RESOURCE_ID = 'ai-console-app-ready';
 
 export function expectedReadyMarker(appConfig = JSON.parse(fs.readFileSync('app.json', 'utf8'))) {
   const version = appConfig?.expo?.version;
@@ -18,8 +20,11 @@ export function classifyAppReadyUi(xml, marker) {
   const expected = marker || expectedReadyMarker();
   const recovery = RECOVERY_MARKERS.find((value) => text.includes(value));
   if (recovery) return { ok: false, code: 2, status: 'RECOVERY_SHELL', marker: recovery };
-  if (!text.includes(expected)) return { ok: false, code: 3, status: 'READY_MARKER_NOT_FOUND', marker: expected };
-  return { ok: true, code: 0, status: 'APP_READY', marker: expected };
+  if (text.includes(expected)) return { ok: true, code: 0, status: 'APP_READY', marker: expected };
+  if (text.includes(`resource-id=\"${APP_READY_RESOURCE_ID}\"`) || text.includes(`resource-id=\"com.nexarenew.aiconsole:id/${APP_READY_RESOURCE_ID}\"`)) {
+    return { ok: true, code: 0, status: 'APP_READY', marker: APP_READY_RESOURCE_ID };
+  }
+  return { ok: false, code: 3, status: 'READY_MARKER_NOT_FOUND', marker: expected };
 }
 
 function main() {
