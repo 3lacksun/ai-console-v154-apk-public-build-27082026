@@ -28,8 +28,17 @@ test('legacy PIN gate and throttle startup behaviour cannot reappear', () => {
 test('normal startup remains unlocked unless optional app lock is enabled and due', () => {
   assert.match(lockSource, /DEFAULT_APP_LOCK_SETTINGS\s*=\s*Object\.freeze\(\{[\s\S]*enabled:\s*false/);
   assert.match(lockSource, /if\s*\(!normalised\.enabled\)\s*return\s*false/);
-  assert.match(appSource, /setAppLocked\(isAppLockDue\(restoredAppLock\)\)/);
-  assert.doesNotMatch(appSource, /setAppLocked\(true\)[\s\S]{0,180}hydrate/);
+
+  const hydrateStart = appSource.indexOf('const hydrate = async () => {');
+  const hydrateEnd = appSource.indexOf('void hydrate();', hydrateStart);
+  assert.ok(hydrateStart >= 0 && hydrateEnd > hydrateStart, 'Startup hydration block could not be isolated');
+  const hydrateSource = appSource.slice(hydrateStart, hydrateEnd);
+
+  assert.match(hydrateSource, /setAppLocked\(isAppLockDue\(restoredAppLock\)\)/);
+  assert.doesNotMatch(hydrateSource, /setAppLocked\(true\)/, 'Startup hydration must never unconditionally lock the app');
+
+  assert.match(appSource, /if\s*\(isAppLockDue\(appLockSettingsRef\.current\)\)\s*setAppLocked\(true\)/);
+  assert.match(appSource, /if\s*\(!hydrated\s*\|\|\s*!appLockSettings\.enabled\s*\|\|\s*appLocked\)\s*return undefined/);
 });
 
 test('optional device-authentication app-lock controls remain available in settings', () => {
