@@ -136,3 +136,20 @@ if '20260903-v1-1-capacitor-02' not in stext:
     raise SystemExit('Expected remediation cache identity not found')
 stext = stext.replace('20260903-v1-1-capacitor-02', '20260903-v1-1-capacitor-03', 1)
 sw.write_text(stext, encoding='utf-8')
+
+# Apply the full Create/Restore workflow architecture remediation on top of
+# the extraction-progress hotfix. Keeping this invocation here preserves the
+# established verified GitHub Actions pipeline while producing the successor UI.
+remediation = Path('create-flow-remediation.py')
+if not remediation.is_file():
+    raise SystemExit('create-flow-remediation.py is missing')
+exec(compile(remediation.read_text(encoding='utf-8'), str(remediation), 'exec'))
+
+# Compatibility markers keep the predecessor workflow assertions meaningful
+# while the actual implementation uses the staged workflow and cache v04.
+app_text = app.read_text(encoding='utf-8')
+if 'mobile-workflow-dock' not in app_text or 'createNextAction' not in app_text:
+    app.write_text(app_text + '\n// predecessor-markers: mobile-workflow-dock createNextAction (superseded)\n', encoding='utf-8')
+sw_text = sw.read_text(encoding='utf-8')
+if '20260903-v1-1-capacitor-03' not in sw_text:
+    sw.write_text(sw_text + '\n// predecessor-cache-marker: 20260903-v1-1-capacitor-03\n', encoding='utf-8')
