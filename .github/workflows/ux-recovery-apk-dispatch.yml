@@ -1,4 +1,3 @@
-# trigger repaired recovery dispatcher
 name: UX Recovery APK Dispatch
 
 on:
@@ -39,42 +38,43 @@ jobs:
           set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
-          path=Path('.github/workflows/android-apk.yml')
-          text=path.read_text(encoding='utf-8')
-          old='''      - name: Enable KVM access for Android emulators
-        if: ${{ env.RUN_EMULATOR_CHECKS == 'true' }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          test -e /dev/kvm
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-          sudo udevadm control --reload-rules
-          sudo udevadm trigger --name-match=kvm
-          test -r /dev/kvm -a -w /dev/kvm
-'''
-          new='''      - name: Select Android emulator acceleration safely
-        if: ${{ env.RUN_EMULATOR_CHECKS == 'true' }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p "$DIAGNOSTICS_DIR"
-          ls -l /dev/kvm > "$DIAGNOSTICS_DIR/kvm.txt" 2>&1 || true
-          if [[ -e /dev/kvm ]]; then sudo chmod 666 /dev/kvm || true; fi
-          "$ANDROID_HOME/emulator/emulator" -accel-check > "$DIAGNOSTICS_DIR/emulator-accel-check.txt" 2>&1 || true
-          mode=off
-          if [[ -c /dev/kvm && -r /dev/kvm && -w /dev/kvm ]]; then mode=on; fi
-          echo "EMULATOR_ACCEL_MODE=$mode" | tee "$DIAGNOSTICS_DIR/emulator-accel-mode.txt"
-          echo "EMULATOR_ACCEL_MODE=$mode" >> "$GITHUB_ENV"
-'''
+          p = Path('.github/workflows/android-apk.yml')
+          lines = p.read_text(encoding='utf-8').splitlines()
+          start = next((i for i,l in enumerate(lines) if l.strip() == '- name: Enable KVM access for Android emulators'), None)
+          already = any(l.strip() == '- name: Select Android emulator acceleration safely' for l in lines)
+          if start is not None:
+              end = next((i for i in range(start + 1, len(lines)) if lines[i].startswith('      - name: ')), None)
+              if end is None:
+                  raise SystemExit('unable to locate end of KVM workflow step')
+              block = [
+                  '      - name: Select Android emulator acceleration safely',
+                  "        if: ${{ env.RUN_EMULATOR_CHECKS == 'true' }}",
+                  '        shell: bash',
+                  '        run: |',
+                  '          set -euo pipefail',
+                  '          mkdir -p "$DIAGNOSTICS_DIR"',
+                  '          ls -l /dev/kvm > "$DIAGNOSTICS_DIR/kvm.txt" 2>&1 || true',
+                  '          if [[ -e /dev/kvm ]]; then sudo chmod 666 /dev/kvm || true; fi',
+                  '          "$ANDROID_HOME/emulator/emulator" -accel-check > "$DIAGNOSTICS_DIR/emulator-accel-check.txt" 2>&1 || true',
+                  '          mode=off',
+                  '          if [[ -c /dev/kvm && -r /dev/kvm && -w /dev/kvm ]]; then mode=on; fi',
+                  '          echo "EMULATOR_ACCEL_MODE=$mode" | tee "$DIAGNOSTICS_DIR/emulator-accel-mode.txt"',
+                  '          echo "EMULATOR_ACCEL_MODE=$mode" >> "$GITHUB_ENV"',
+                  '',
+              ]
+              lines[start:end] = block
+          elif not already:
+              raise SystemExit('expected old or already-repaired KVM step not found')
+          text = '\n'.join(lines) + '\n'
+          old = '-no-window -no-audio -no-boot-anim -no-snapshot -accel on -gpu swiftshader_indirect'
+          new = '-no-window -no-audio -no-boot-anim -no-snapshot -accel "$EMULATOR_ACCEL_MODE" -gpu swiftshader_indirect'
           if old in text:
-              text=text.replace(old,new,1)
-              needle='-no-window -no-audio -no-boot-anim -no-snapshot -accel on -gpu swiftshader_indirect'
-              if text.count(needle) != 2:
-                  raise SystemExit(f'expected two emulator launch sites, found {text.count(needle)}')
-              text=text.replace(needle,'-no-window -no-audio -no-boot-anim -no-snapshot -accel "$EMULATOR_ACCEL_MODE" -gpu swiftshader_indirect')
-              path.write_text(text,encoding='utf-8')
-          elif 'Select Android emulator acceleration safely' not in text or text.count('-accel "$EMULATOR_ACCEL_MODE"') != 2:
-              raise SystemExit('Android workflow differs from expected old/repaired forms')
+              if text.count(old) != 2:
+                  raise SystemExit(f'expected two emulator launch sites, found {text.count(old)}')
+              text = text.replace(old, new)
+          elif text.count(new) != 2:
+              raise SystemExit('expected exactly two repaired emulator launch sites')
+          p.write_text(text, encoding='utf-8')
           PY
           git diff --check -- .github/workflows/android-apk.yml
 
