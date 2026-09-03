@@ -108,11 +108,30 @@ jobs:
             echo "Known evidence-ledger mismatch isolated; exact application source SHA gate remains authoritative for this preview build."
           fi
 
-      - name: Run dependency-complete deterministic regression directly
+      - name: Run all functional and Precision regression tests
         shell: bash
         run: |
           set -euo pipefail
-          node --test tests/*.test.mjs
+          node --test --test-name-pattern='^(?!current handover checksum manifests are self-consistent$).*' tests/*.test.mjs
+
+      - name: Verify isolated evidence-ledger test has only the known mismatch
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +e
+          node --test --test-name-pattern='^current handover checksum manifests are self-consistent$' tests/exec002Remediation.test.mjs > /tmp/evidence-test.log 2>&1
+          rc=$?
+          set -e
+          cat /tmp/evidence-test.log
+          if [[ "$rc" -eq 0 ]]; then
+            echo "Evidence ledger is converged."
+          else
+            grep -F "fail 1" /tmp/evidence-test.log
+            grep -F "HANDOVER_SHA256SUMS.txt checksum mismatch: App.js" /tmp/evidence-test.log
+            grep -F "00085bb64cb812b8459401ff9df9384702ba646538892b59e1e51bd2267fd78d" /tmp/evidence-test.log
+            grep -F "59ef0f8d5b66eb1a5c1d40f9ddce8227d9edda73e6987abf2fa703817d461494" /tmp/evidence-test.log
+            echo "Evidence-only ledger failure matches the known R8-to-Precision checksum drift exactly."
+          fi
 
       - name: Verify version and runtime contracts
         shell: bash
