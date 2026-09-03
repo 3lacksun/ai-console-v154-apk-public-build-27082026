@@ -2,15 +2,14 @@ name: TurnCall v1.2.1 F13-F33 Android build
 
 on:
   push:
-    branches:
-      - turncall-f13-f33-rem002-build-03092026
+    branches: [turncall-f13-f33-rem002-build-03092026]
   workflow_dispatch:
 
 permissions:
   contents: read
 
 env:
-  PAYLOAD_URL: https://drive.usercontent.google.com/download?id=1pxaSoYyDikymC93Q4DGuLZ4IMoIeCbws&export=download&confirm=t
+  PAYLOAD_URL: https://drive.google.com/uc?export=download&id=1pxaSoYyDikymC93Q4DGuLZ4IMoIeCbws
   PAYLOAD_SHA256: de0c8f3a56055a12adfc8e1e07eafe5fa78a2108c4c59353689a49d8ad5fa3c7
   PACKAGE_NAME: im.turncall.app
   VERSION_NAME: 1.2.1
@@ -28,8 +27,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          curl -fL --retry 3 --retry-delay 2 "$PAYLOAD_URL" -o /tmp/turncall-payload.zip
+          curl -fL -A 'Mozilla/5.0' --retry 3 --retry-delay 2 "$PAYLOAD_URL" -o /tmp/turncall-payload.zip
+          wc -c /tmp/turncall-payload.zip
+          file /tmp/turncall-payload.zip
+          sha256sum /tmp/turncall-payload.zip
           echo "$PAYLOAD_SHA256  /tmp/turncall-payload.zip" | sha256sum -c -
+          unzip -t /tmp/turncall-payload.zip
           unzip -q /tmp/turncall-payload.zip -d turncall-build
           test -f turncall-build/capacitor/package-lock.json
           test -f turncall-build/capacitor/www/turncall-f13f33.js
@@ -67,17 +70,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          for f in \
-            qa/asset_resolution_contract.mjs \
-            qa/native_bridge_contract.mjs \
-            qa/persistence_contract.mjs \
-            qa/r12_persistence_contract.mjs \
-            qa/r12_workflow_contract.mjs \
-            qa/secure_storage_workflow.mjs \
-            qa/standalone_runtime_contract.mjs \
-            qa/f13_f33_contract.mjs; do
-            node "$f"
-          done
+          for f in qa/asset_resolution_contract.mjs qa/native_bridge_contract.mjs qa/persistence_contract.mjs qa/r12_persistence_contract.mjs qa/r12_workflow_contract.mjs qa/secure_storage_workflow.mjs qa/standalone_runtime_contract.mjs qa/f13_f33_contract.mjs; do node "$f"; done
 
       - name: Converge Capacitor Android assets
         working-directory: turncall-build/capacitor
@@ -90,17 +83,14 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
           import hashlib
-          www=Path('capacitor/www')
-          packaged=Path('capacitor/android/app/src/main/assets/public')
-          total=0
-          for p in sorted(www.rglob('*')):
-              if not p.is_file(): continue
-              q=packaged/p.relative_to(www)
-              if not q.exists(): raise SystemExit(f'missing generated asset: {q}')
-              h=lambda x: hashlib.sha256(x.read_bytes()).hexdigest()
-              if h(p)!=h(q): raise SystemExit(f'asset mismatch: {p.relative_to(www)}')
-              total+=1
-          print(f'ASSET_PARITY=PASS {total}/{total}')
+          s=Path('capacitor/www'); d=Path('capacitor/android/app/src/main/assets/public'); n=0
+          H=lambda p: hashlib.sha256(p.read_bytes()).hexdigest()
+          for p in sorted(s.rglob('*')):
+            if not p.is_file(): continue
+            q=d/p.relative_to(s)
+            if not q.exists() or H(p)!=H(q): raise SystemExit(f'asset parity failure: {p.relative_to(s)}')
+            n+=1
+          print(f'ASSET_PARITY=PASS {n}/{n}')
           PY
 
       - name: Build debug APK
@@ -124,24 +114,20 @@ jobs:
           grep -F "versionCode='$VERSION_CODE'" apk-badging.txt
           grep -F "versionName='$VERSION_NAME'" apk-badging.txt
           sha256sum "$APK" | tee apk-sha256.txt
-          rm -rf apk-unpacked && mkdir apk-unpacked
-          unzip -q "$APK" -d apk-unpacked
+          rm -rf apk-unpacked && mkdir apk-unpacked && unzip -q "$APK" -d apk-unpacked
           python3 - <<'PY'
           from pathlib import Path
           import hashlib
-          src=Path('capacitor/www')
-          candidates=[Path('apk-unpacked/assets/public'),Path('apk-unpacked/assets')]
-          dst=next((p for p in candidates if (p/'index.html').exists()),None)
-          if dst is None: raise SystemExit('embedded Capacitor web assets not found')
-          checked=0
-          for p in src.rglob('*'):
-              if not p.is_file(): continue
-              q=dst/p.relative_to(src)
-              if not q.exists(): raise SystemExit(f'APK missing asset: {p.relative_to(src)}')
-              h=lambda x: hashlib.sha256(x.read_bytes()).hexdigest()
-              if h(p)!=h(q): raise SystemExit(f'APK asset mismatch: {p.relative_to(src)}')
-              checked+=1
-          print(f'APK_ASSET_PARITY=PASS {checked}/{checked}')
+          s=Path('capacitor/www'); candidates=[Path('apk-unpacked/assets/public'),Path('apk-unpacked/assets')]
+          d=next((x for x in candidates if (x/'index.html').exists()),None)
+          if d is None: raise SystemExit('embedded Capacitor web assets not found')
+          H=lambda p: hashlib.sha256(p.read_bytes()).hexdigest(); n=0
+          for p in s.rglob('*'):
+            if not p.is_file(): continue
+            q=d/p.relative_to(s)
+            if not q.exists() or H(p)!=H(q): raise SystemExit(f'APK asset mismatch: {p.relative_to(s)}')
+            n+=1
+          print(f'APK_ASSET_PARITY=PASS {n}/{n}')
           PY
           cp "$APK" TURNCALL_V1_2_1_F13_F33_REM002_DEBUG.apk
 
