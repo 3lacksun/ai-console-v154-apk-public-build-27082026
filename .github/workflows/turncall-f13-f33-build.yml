@@ -2,15 +2,15 @@ name: TurnCall v1.2.1 F13-F33 Android build
 
 on:
   push:
-    branches: [turncall-f13-f33-rem002-build-03092026]
+    branches:
+      - turncall-f13-f33-rem002-build-03092026
   workflow_dispatch:
 
 permissions:
   contents: read
 
 env:
-  PAYLOAD_FILE_ID: 1pxaSoYyDikymC93Q4DGuLZ4IMoIeCbws
-  PAYLOAD_SHA256: de0c8f3a56055a12adfc8e1e07eafe5fa78a2108c4c59353689a49d8ad5fa3c7
+  PAYLOAD_SHA256: 9039c370c1b5e213db4c4c989f5310a32b09b0d4eb2a4edc1d72ad9f0a2d185f
   PACKAGE_NAME: im.turncall.app
   VERSION_NAME: 1.2.1
   VERSION_CODE: '3'
@@ -23,21 +23,23 @@ jobs:
       - name: Checkout carrier
         uses: actions/checkout@v4
 
-      - name: Fetch verified TurnCall source payload
+      - name: Reconstruct verified TurnCall source payload
         shell: bash
         run: |
           set -euo pipefail
-          python3 -m pip install --disable-pip-version-check --no-input gdown
-          python3 -m gdown "$PAYLOAD_FILE_ID" -O /tmp/turncall-payload.zip
-          wc -c /tmp/turncall-payload.zip
-          file /tmp/turncall-payload.zip
-          sha256sum /tmp/turncall-payload.zip
-          echo "$PAYLOAD_SHA256  /tmp/turncall-payload.zip" | sha256sum -c -
-          unzip -t /tmp/turncall-payload.zip
-          unzip -q /tmp/turncall-payload.zip -d turncall-build
+          cat \
+            .turncall-f13f33/payload.part00 \
+            .turncall-f13f33/payload.part01 \
+            .turncall-f13f33/payload.part02 \
+            > /tmp/turncall-payload.tar.xz
+          echo "$PAYLOAD_SHA256  /tmp/turncall-payload.tar.xz" | sha256sum -c -
+          xz -t /tmp/turncall-payload.tar.xz
+          mkdir -p turncall-build
+          tar -xJf /tmp/turncall-payload.tar.xz -C turncall-build
           test -f turncall-build/capacitor/package-lock.json
           test -f turncall-build/capacitor/www/turncall-f13f33.js
-          test -f turncall-build/capacitor/android/app/src/main/AndroidManifest.xml
+          test -f turncall-build/native-overlay/app/src/main/java/im/turncall/app/TurnCallBackendPlugin.java
+          printf 'PAYLOAD_BYTES=%s\n' "$(wc -c < /tmp/turncall-payload.tar.xz)"
 
       - name: Set up Node 24
         uses: actions/setup-node@v4
@@ -61,6 +63,7 @@ jobs:
           set -euo pipefail
           yes | sdkmanager --licenses >/dev/null 2>&1 || true
           sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+          sdkmanager --list_installed | tee turncall-build/android-sdk-installed.txt
 
       - name: Install Capacitor dependencies
         working-directory: turncall-build/capacitor
@@ -71,27 +74,85 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          for f in qa/asset_resolution_contract.mjs qa/native_bridge_contract.mjs qa/persistence_contract.mjs qa/r12_persistence_contract.mjs qa/r12_workflow_contract.mjs qa/secure_storage_workflow.mjs qa/standalone_runtime_contract.mjs qa/f13_f33_contract.mjs; do node "$f"; done
+          : > js-contract-results.txt
+          for f in \
+            qa/asset_resolution_contract.mjs \
+            qa/native_bridge_contract.mjs \
+            qa/persistence_contract.mjs \
+            qa/r12_persistence_contract.mjs \
+            qa/r12_workflow_contract.mjs \
+            qa/secure_storage_workflow.mjs \
+            qa/standalone_runtime_contract.mjs \
+            qa/f13_f33_contract.mjs; do
+            echo "== $f ==" | tee -a js-contract-results.txt
+            node "$f" 2>&1 | tee -a js-contract-results.txt
+          done
 
-      - name: Converge Capacitor Android assets
-        working-directory: turncall-build/capacitor
-        run: npx cap sync android
+      - name: Generate and converge Capacitor Android project
+        working-directory: turncall-build
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf capacitor/android
+          (cd capacitor && npx cap add android)
+          (cd capacitor && npx cap sync android)
+          rsync -a native-overlay/app/ capacitor/android/app/
+          test -f capacitor/android/app/src/main/java/im/turncall/app/TurnCallBackendPlugin.java
+          grep -F 'applicationId "im.turncall.app"' capacitor/android/app/build.gradle
+          grep -F 'versionCode 3' capacitor/android/app/build.gradle
+          grep -F 'versionName "1.2.1"' capacitor/android/app/build.gradle
 
       - name: Verify source/generated asset parity
         working-directory: turncall-build
         shell: bash
         run: |
+          set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
           import hashlib
-          s=Path('capacitor/www'); d=Path('capacitor/android/app/src/main/assets/public'); n=0
-          H=lambda p: hashlib.sha256(p.read_bytes()).hexdigest()
-          for p in sorted(s.rglob('*')):
-            if not p.is_file(): continue
-            q=d/p.relative_to(s)
-            if not q.exists() or H(p)!=H(q): raise SystemExit(f'asset parity failure: {p.relative_to(s)}')
-            n+=1
-          print(f'ASSET_PARITY=PASS {n}/{n}')
+          www=Path('capacitor/www')
+          packaged=Path('capacitor/android/app/src/main/assets/public')
+          total=0
+          for p in sorted(www.rglob('*')):
+              if not p.is_file():
+                  continue
+              q=packaged/p.relative_to(www)
+              if not q.exists():
+                  raise SystemExit(f'missing generated asset: {q}')
+              h=lambda x: hashlib.sha256(x.read_bytes()).hexdigest()
+              if h(p)!=h(q):
+                  raise SystemExit(f'asset mismatch: {p.relative_to(www)}')
+              total+=1
+          print(f'ASSET_PARITY=PASS {total}/{total}')
+          if total != 27:
+              raise SystemExit(f'unexpected production web asset count: {total}')
+          PY
+
+      - name: Scan production assets for forbidden runtime dependencies and embedded secrets
+        working-directory: turncall-build
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          root=Path('capacitor/www')
+          text='\n'.join(p.read_text(errors='ignore') for p in root.rglob('*') if p.is_file())
+          forbidden=[
+              r'http://127\.0\.0\.1:19777', r'http://localhost:19777',
+              r'fetch\(["\']http://127\.0\.0\.1', r'fetch\(["\']http://localhost'
+          ]
+          for pat in forbidden:
+              if re.search(pat,text,re.I):
+                  raise SystemExit(f'forbidden production runtime dependency: {pat}')
+          secret_patterns=[
+              r'(?i)(api[_-]?key|token|secret)\s*[:=]\s*["\'][A-Za-z0-9_\-]{24,}["\']',
+              r'\bsk-[A-Za-z0-9_-]{20,}\b'
+          ]
+          for pat in secret_patterns:
+              if re.search(pat,text):
+                  raise SystemExit('embedded secret-like token found in production assets')
+          print('RUNTIME_AND_SECRET_SCAN=PASS')
           PY
 
       - name: Build debug APK
@@ -100,7 +161,7 @@ jobs:
         run: |
           set -euo pipefail
           chmod +x gradlew
-          ./gradlew app:assembleDebug --no-daemon --max-workers=2
+          ./gradlew app:assembleDebug --no-daemon --max-workers=2 --stacktrace
 
       - name: Verify APK identity and contents
         working-directory: turncall-build
@@ -110,36 +171,55 @@ jobs:
           APK=capacitor/android/app/build/outputs/apk/debug/app-debug.apk
           test -s "$APK"
           AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -1)"
+          test -x "$AAPT"
           "$AAPT" dump badging "$APK" | tee apk-badging.txt
           grep -F "package: name='$PACKAGE_NAME'" apk-badging.txt
           grep -F "versionCode='$VERSION_CODE'" apk-badging.txt
           grep -F "versionName='$VERSION_NAME'" apk-badging.txt
           sha256sum "$APK" | tee apk-sha256.txt
-          rm -rf apk-unpacked && mkdir apk-unpacked && unzip -q "$APK" -d apk-unpacked
+          rm -rf apk-unpacked && mkdir apk-unpacked
+          unzip -q "$APK" -d apk-unpacked
           python3 - <<'PY'
           from pathlib import Path
           import hashlib
-          s=Path('capacitor/www'); candidates=[Path('apk-unpacked/assets/public'),Path('apk-unpacked/assets')]
-          d=next((x for x in candidates if (x/'index.html').exists()),None)
-          if d is None: raise SystemExit('embedded Capacitor web assets not found')
-          H=lambda p: hashlib.sha256(p.read_bytes()).hexdigest(); n=0
-          for p in s.rglob('*'):
-            if not p.is_file(): continue
-            q=d/p.relative_to(s)
-            if not q.exists() or H(p)!=H(q): raise SystemExit(f'APK asset mismatch: {p.relative_to(s)}')
-            n+=1
-          print(f'APK_ASSET_PARITY=PASS {n}/{n}')
+          src=Path('capacitor/www')
+          candidates=[Path('apk-unpacked/assets/public'),Path('apk-unpacked/assets')]
+          dst=next((p for p in candidates if (p/'index.html').exists()),None)
+          if dst is None:
+              raise SystemExit('embedded Capacitor web assets not found')
+          checked=0
+          for p in src.rglob('*'):
+              if not p.is_file():
+                  continue
+              q=dst/p.relative_to(src)
+              if not q.exists():
+                  raise SystemExit(f'APK missing asset: {p.relative_to(src)}')
+              h=lambda x: hashlib.sha256(x.read_bytes()).hexdigest()
+              if h(p)!=h(q):
+                  raise SystemExit(f'APK asset mismatch: {p.relative_to(src)}')
+              checked+=1
+          print(f'APK_ASSET_PARITY=PASS {checked}/{checked}')
+          if checked != 27:
+              raise SystemExit(f'unexpected APK web asset count: {checked}')
           PY
           cp "$APK" TURNCALL_V1_2_1_F13_F33_REM002_DEBUG.apk
 
-      - name: Package converged source
+      - name: Package converged source and verification
         working-directory: turncall-build
         shell: bash
         run: |
           set -euo pipefail
-          rm -rf capacitor/node_modules capacitor/android/.gradle capacitor/android/app/build
+          rm -rf capacitor/node_modules capacitor/android/.gradle capacitor/android/app/build apk-unpacked
           zip -qr TURNCALL_V1_2_1_F13_F33_REM002_CONVERGED_SOURCE.zip capacitor qa
           sha256sum TURNCALL_V1_2_1_F13_F33_REM002_CONVERGED_SOURCE.zip > TURNCALL_V1_2_1_F13_F33_REM002_CONVERGED_SOURCE.zip.sha256.txt
+          {
+            echo 'GITHUB_ACTIONS_ANDROID_BUILD=PASS'
+            echo 'PACKAGE_NAME=im.turncall.app'
+            echo 'VERSION_NAME=1.2.1'
+            echo 'VERSION_CODE=3'
+            echo 'WEB_ASSET_PARITY=27/27'
+            cat apk-sha256.txt
+          } > github-build-verification.txt
 
       - name: Upload TurnCall APK and verification
         uses: actions/upload-artifact@v4
@@ -151,5 +231,8 @@ jobs:
             turncall-build/TURNCALL_V1_2_1_F13_F33_REM002_DEBUG.apk
             turncall-build/apk-badging.txt
             turncall-build/apk-sha256.txt
+            turncall-build/js-contract-results.txt
+            turncall-build/android-sdk-installed.txt
+            turncall-build/github-build-verification.txt
             turncall-build/TURNCALL_V1_2_1_F13_F33_REM002_CONVERGED_SOURCE.zip
             turncall-build/TURNCALL_V1_2_1_F13_F33_REM002_CONVERGED_SOURCE.zip.sha256.txt
