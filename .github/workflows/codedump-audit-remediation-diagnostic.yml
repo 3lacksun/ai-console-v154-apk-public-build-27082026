@@ -1,0 +1,49 @@
+name: Code Dump Tool Remediation Hash Diagnostic
+
+on:
+  push:
+    branches: [ codedump-audit-remediation-03092026 ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Materialise green source and apply exact patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd codedump
+          cat overlay-chunks/overlay.{00..13} overlay-chunks/overlay.14a overlay-chunks/overlay.14b overlay-chunks/overlay.14c overlay-chunks/overlay.{15..17} > /tmp/green.b64
+          test "$(sha256sum /tmp/green.b64 | awk '{print $1}')" = "06d888899f0a3f67ca4254aef7fc81af9d9c9eeaf90205791fdb204c87082a67"
+          base64 --decode /tmp/green.b64 > /tmp/green.tar.gz
+          test "$(sha256sum /tmp/green.tar.gz | awk '{print $1}')" = "b3028e80b7cac2308c105337c020d3a66ecde12e3dfa094ca6f6bdbe18d7e87f"
+          tar -xzf /tmp/green.tar.gz
+          echo 'BASE HASHES:'
+          sha256sum web/app.css web/app.js web/archive-core.js web/core.js web/sw.js native/android-overlay/app/src/main/AndroidManifest.xml
+          cd ..
+          cat codedump/audit-remediation/patch.00 codedump/audit-remediation/patch.01 > /tmp/remediation.b64
+          test "$(sha256sum /tmp/remediation.b64 | awk '{print $1}')" = "7d6f628d146943a08932de83954255ebd0d0585866c17a814cc70868bbb6d19c"
+          base64 --decode /tmp/remediation.b64 | gzip -dc > /tmp/remediation.patch
+          test "$(sha256sum /tmp/remediation.patch | awk '{print $1}')" = "7ed2931c02df50f9412b25bcd9a8b36207019d65eb0da90dfd2f6558b04f338c"
+          cd codedump
+          git apply --check /tmp/remediation.patch
+          git apply /tmp/remediation.patch
+          echo 'POST-APPLY HASHES:'
+          sha256sum web/app.css web/app.js web/archive-core.js web/core.js web/sw.js native/android-overlay/app/src/main/AndroidManifest.xml
+          echo 'EXPECTED:'
+          printf '%s\n' \
+            '0d3f2b033b5217b09030af6fae67ea674ea7627d093e8bde8684d04bf9fbd515  web/app.css' \
+            'dd33453c335f7b53690a8afdf1662e9df8ced11a0aeeebfe82837bd75fbddabe  web/app.js' \
+            '634f50c49cd597ee3a69ef049f2e4cb7e108e33f468a593a9b8f6849a6d11d07  web/archive-core.js' \
+            'f5e2c27d970df00e1546c22005e94c16c3e70421f47863a25cf0bfdbbc7e9a4f  web/core.js' \
+            'c84b8cfaa5072acee739d272aa79d8b9dab0cebd81c604ce9f3729584a6b68a6  web/sw.js' \
+            '28f97a48e335e74dfd1554dc5c7ea990aef388088401a4fa9e0fc97a5d1f919d  native/android-overlay/app/src/main/AndroidManifest.xml'
+          git diff --check
+          git diff --stat
