@@ -1,0 +1,30 @@
+name: UX Regression Recovery Source Verification
+
+on:
+  push:
+    branches:
+      - ux-regression-recovery-03092026
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  source-verification:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout recovery branch
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - name: Set up Node 24
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - name: Install exact dependencies
+        run: npm ci
+      - name: Fail-closed static verification
+        run: npm run check
+      - name: Full source regression suite
+        run: npm test
