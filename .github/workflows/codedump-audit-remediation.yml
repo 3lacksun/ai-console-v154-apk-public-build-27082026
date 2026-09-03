@@ -53,9 +53,9 @@ jobs:
           gzip -dc /tmp/remediation.patch.gz > /tmp/remediation.patch
           test "$(wc -c < /tmp/remediation.patch)" -eq 27578
           test "$(sha256sum /tmp/remediation.patch | awk '{print $1}')" = "7ed2931c02df50f9412b25bcd9a8b36207019d65eb0da90dfd2f6558b04f338c"
+          git apply --check --directory=codedump /tmp/remediation.patch
+          git apply --directory=codedump /tmp/remediation.patch
           cd codedump
-          git apply --check /tmp/remediation.patch
-          git apply /tmp/remediation.patch
           sha256sum -c <<'EOF'
           0d3f2b033b5217b09030af6fae67ea674ea7627d093e8bde8684d04bf9fbd515  web/app.css
           dd33453c335f7b53690a8afdf1662e9df8ced11a0aeeebfe82837bd75fbddabe  web/app.js
