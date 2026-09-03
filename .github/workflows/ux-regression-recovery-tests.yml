@@ -1,3 +1,4 @@
+# Recovery verification trigger after integrity reseal; no product-source change.
 name: UX Regression Recovery Source Verification
 
 on:
