@@ -103,7 +103,7 @@ html, body {
     padding-inline:8px;
     font-size:.74rem;
   }
-  .secret-bulk-actions { grid-template-columns:repeat(3,minmax(0,1fr)); }
+  .actions.three-col.secret-bulk-actions { grid-template-columns:repeat(3,minmax(0,1fr)); }
   .create-review-screen .viewer .code-scroll { max-height:34dvh; }
   .create-stepper,
   .binary-policy-card,
