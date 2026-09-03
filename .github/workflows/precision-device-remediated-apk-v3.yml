@@ -81,8 +81,13 @@ jobs:
           1761507dfad0a372a78c2c2663eff2784bd0e7bf4e609ebc1c1cfd3e5947874b  tests/precision-command-centre.test.mjs
           EOF
           sha256sum -c /tmp/remediated-files.sha256
-          grep -F '${currentModelName()} · ${APP_RELEASE_LABEL}' App.js
-          grep -F "{\`${activeWorkspace?.name || 'Workspace'} · ${activeProviderLabel}\`}</Text>" App.js
+          python - <<'PY'
+          from pathlib import Path
+          source = Path('App.js').read_text()
+          assert '${currentModelName()} · ${APP_RELEASE_LABEL}' in source
+          assert "{`${activeWorkspace?.name || 'Workspace'} · ${activeProviderLabel}`}</Text>" in source
+          print('COMPACT_HEADER_LITERAL_VERIFICATION: PASS')
+          PY
 
       - name: Set up Node 24
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
