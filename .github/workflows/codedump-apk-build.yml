@@ -31,7 +31,16 @@ jobs:
         run: |
           set -euo pipefail
           cd codedump
-          tr -d '[:space:]' < green-runtime-overlay.tar.gz.b64 | base64 --decode > /tmp/codedump-green-overlay.tar.gz
+          cat overlay-chunks/overlay.{00..17} > /tmp/codedump-green-overlay.tar.gz.b64
+          test "$(wc -c < /tmp/codedump-green-overlay.tar.gz.b64)" -eq 104336
+          B64_SHA="$(sha256sum /tmp/codedump-green-overlay.tar.gz.b64 | awk '{print $1}')"
+          echo "Joined Base64 SHA-256: $B64_SHA"
+          test "$B64_SHA" = "06d888899f0a3f67ca4254aef7fc81af9d9c9eeaf90205791fdb204c87082a67"
+          base64 --decode /tmp/codedump-green-overlay.tar.gz.b64 > /tmp/codedump-green-overlay.tar.gz
+          test "$(wc -c < /tmp/codedump-green-overlay.tar.gz)" -eq 78250
+          GZ_SHA="$(sha256sum /tmp/codedump-green-overlay.tar.gz | awk '{print $1}')"
+          echo "Decoded gzip SHA-256: $GZ_SHA"
+          test "$GZ_SHA" = "b3028e80b7cac2308c105337c020d3a66ecde12e3dfa094ca6f6bdbe18d7e87f"
           tar -tzf /tmp/codedump-green-overlay.tar.gz >/dev/null
           tar -xzf /tmp/codedump-green-overlay.tar.gz
           sha256sum -c <<'EOF'
@@ -131,6 +140,8 @@ jobs:
             echo "Code Dump version: 1.1.0"
             echo "Application ID: app.codedump.tool"
             echo "Green implementation patch SHA-256: 93d7f2eda8e7429547cd0cd99810f5b5006e46763eea5ee1a43016f12b640f0e"
+            echo "Overlay Base64 SHA-256: 06d888899f0a3f67ca4254aef7fc81af9d9c9eeaf90205791fdb204c87082a67"
+            echo "Overlay gzip SHA-256: b3028e80b7cac2308c105337c020d3a66ecde12e3dfa094ca6f6bdbe18d7e87f"
             echo "Production-file SHA-256 verification: PASS"
             echo "Capacitor: 8.5.0"
             echo "JSZip: 3.10.1"
