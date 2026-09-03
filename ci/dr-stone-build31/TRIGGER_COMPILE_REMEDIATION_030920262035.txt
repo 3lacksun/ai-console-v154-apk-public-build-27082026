@@ -1,0 +1,1 @@
+Trigger full Build31 Android gate after deterministic remediation of GeneratedImageController and SettingsScreen compile blockers.
