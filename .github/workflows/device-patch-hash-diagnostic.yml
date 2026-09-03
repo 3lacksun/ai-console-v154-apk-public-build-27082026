@@ -1,0 +1,23 @@
+name: Device Remediation Patch Hash Diagnostic
+
+on:
+  push:
+    branches:
+      - precision-command-centre-apk-public-03092026
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  hash:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - name: Report stored patch identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          wc -c .ci/device-layout-remediation.patch
+          sha256sum .ci/device-layout-remediation.patch
+          git hash-object .ci/device-layout-remediation.patch
