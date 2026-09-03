@@ -31,7 +31,7 @@ jobs:
         run: |
           set -euo pipefail
           cd codedump
-          cat overlay-chunks/overlay.{00..17} > /tmp/codedump-green-overlay.tar.gz.b64
+          cat overlay-chunks/overlay.{00..13} overlay-chunks/overlay.14a overlay-chunks/overlay.14b overlay-chunks/overlay.14c overlay-chunks/overlay.{15..17} > /tmp/codedump-green-overlay.tar.gz.b64
           test "$(wc -c < /tmp/codedump-green-overlay.tar.gz.b64)" -eq 104336
           B64_SHA="$(sha256sum /tmp/codedump-green-overlay.tar.gz.b64 | awk '{print $1}')"
           echo "Joined Base64 SHA-256: $B64_SHA"
