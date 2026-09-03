@@ -167,10 +167,20 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          echo no | avdmanager create avd --force --name recovery-api36 --package "$API36_IMAGE"
+          export ANDROID_AVD_HOME="$HOME/.android/avd"
+          mkdir -p "$ANDROID_AVD_HOME"
+          rm -rf "$ANDROID_AVD_HOME/recovery-api36.avd" "$ANDROID_AVD_HOME/recovery-api36.ini"
+          printf 'no\n' | avdmanager create avd --force --name recovery-api36 --package "$API36_IMAGE" --device pixel_2 | tee "$EVIDENCE/api36-avd-create.txt"
+          test -f "$ANDROID_AVD_HOME/recovery-api36.ini"
+          "$ANDROID_HOME/emulator/emulator" -list-avds | tee "$EVIDENCE/api36-avd-list.txt"
+          grep -Fx 'recovery-api36' "$EVIDENCE/api36-avd-list.txt"
+          adb kill-server || true
+          adb start-server
           nohup "$ANDROID_HOME/emulator/emulator" -avd recovery-api36 -no-window -no-audio -no-boot-anim -no-snapshot -accel "$EMULATOR_ACCEL_MODE" -gpu swiftshader_indirect > "$EVIDENCE/api36-emulator.log" 2>&1 &
-          timeout 600 adb wait-for-device
-          timeout 600 bash -c 'until [[ "$(adb shell getprop sys.boot_completed | tr -d "\r")" == "1" ]]; do sleep 5; done'
+          EMU_PID=$!
+          echo "$EMU_PID" > "$EVIDENCE/api36-emulator.pid"
+          timeout 180 bash -c 'until adb get-state >/dev/null 2>&1; do kill -0 '"$EMU_PID"' >/dev/null 2>&1 || { cat '"$EVIDENCE"'/api36-emulator.log; exit 1; }; sleep 2; done'
+          timeout 480 bash -c 'until [[ "$(adb shell getprop sys.boot_completed | tr -d "\r")" == "1" ]]; do kill -0 '"$EMU_PID"' >/dev/null 2>&1 || { cat '"$EVIDENCE"'/api36-emulator.log; exit 1; }; sleep 5; done'
           test "$(adb shell getprop ro.build.version.sdk | tr -d '\r')" = '36'
           adb install -r "$APK_PATH" | tee "$EVIDENCE/api36-install.txt"
           adb logcat -c
@@ -205,10 +215,20 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          echo no | avdmanager create avd --force --name recovery-ps16k --package "$PS16K_IMAGE"
+          export ANDROID_AVD_HOME="$HOME/.android/avd"
+          mkdir -p "$ANDROID_AVD_HOME"
+          rm -rf "$ANDROID_AVD_HOME/recovery-ps16k.avd" "$ANDROID_AVD_HOME/recovery-ps16k.ini"
+          printf 'no\n' | avdmanager create avd --force --name recovery-ps16k --package "$PS16K_IMAGE" --device pixel_2 | tee "$EVIDENCE/ps16k-avd-create.txt"
+          test -f "$ANDROID_AVD_HOME/recovery-ps16k.ini"
+          "$ANDROID_HOME/emulator/emulator" -list-avds | tee "$EVIDENCE/ps16k-avd-list.txt"
+          grep -Fx 'recovery-ps16k' "$EVIDENCE/ps16k-avd-list.txt"
+          adb kill-server || true
+          adb start-server
           nohup "$ANDROID_HOME/emulator/emulator" -avd recovery-ps16k -no-window -no-audio -no-boot-anim -no-snapshot -accel "$EMULATOR_ACCEL_MODE" -gpu swiftshader_indirect > "$EVIDENCE/ps16k-emulator.log" 2>&1 &
-          timeout 600 adb wait-for-device
-          timeout 600 bash -c 'until [[ "$(adb shell getprop sys.boot_completed | tr -d "\r")" == "1" ]]; do sleep 5; done'
+          EMU_PID=$!
+          echo "$EMU_PID" > "$EVIDENCE/ps16k-emulator.pid"
+          timeout 180 bash -c 'until adb get-state >/dev/null 2>&1; do kill -0 '"$EMU_PID"' >/dev/null 2>&1 || { cat '"$EVIDENCE"'/ps16k-emulator.log; exit 1; }; sleep 2; done'
+          timeout 480 bash -c 'until [[ "$(adb shell getprop sys.boot_completed | tr -d "\r")" == "1" ]]; do kill -0 '"$EMU_PID"' >/dev/null 2>&1 || { cat '"$EVIDENCE"'/ps16k-emulator.log; exit 1; }; sleep 5; done'
           PAGE_SIZE="$(adb shell getconf PAGE_SIZE | tr -d '\r[:space:]')"
           echo "PAGE_SIZE=$PAGE_SIZE" | tee "$EVIDENCE/ps16k-page-size.txt"
           test "$PAGE_SIZE" = '16384'
