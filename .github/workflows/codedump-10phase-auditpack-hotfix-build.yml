@@ -1,0 +1,222 @@
+name: Code Dump 10-Phase Audit Pack 1.0.1 Hotfix Build
+
+on:
+  push:
+    branches: [ codedump-10phase-auditpack-05092026 ]
+    paths:
+      - 'codedump/audit-hotfix/**'
+      - '.github/workflows/codedump-10phase-auditpack-hotfix-build.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: codedump-auditpack-hotfix-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CI: true
+
+jobs:
+  build:
+    name: Verify audit-pack 1.0.1 hotfix and build Android artefacts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout carrier branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Materialise verified baseline, apply 1.0.0 upgrade, then 1.0.1 hotfix
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd codedump
+          cat overlay-chunks/overlay.{00..13} overlay-chunks/overlay.14a overlay-chunks/overlay.14b overlay-chunks/overlay.14c overlay-chunks/overlay.{15..17} > /tmp/codedump-green-overlay.tar.gz.b64
+          test "$(wc -c < /tmp/codedump-green-overlay.tar.gz.b64)" -eq 104336
+          test "$(sha256sum /tmp/codedump-green-overlay.tar.gz.b64 | awk '{print $1}')" = "06d888899f0a3f67ca4254aef7fc81af9d9c9eeaf90205791fdb204c87082a67"
+          base64 --decode /tmp/codedump-green-overlay.tar.gz.b64 > /tmp/codedump-green-overlay.tar.gz
+          test "$(wc -c < /tmp/codedump-green-overlay.tar.gz)" -eq 78250
+          test "$(sha256sum /tmp/codedump-green-overlay.tar.gz | awk '{print $1}')" = "b3028e80b7cac2308c105337c020d3a66ecde12e3dfa094ca6f6bdbe18d7e87f"
+          tar -tzf /tmp/codedump-green-overlay.tar.gz >/dev/null
+          tar -xzf /tmp/codedump-green-overlay.tar.gz
+
+          sha256sum -c <<'BASELINE'
+          e5088f7a46c801b46754888c34ea84d73b8bf2d0d22063fd2f7aad6b513f2258  web/app.css
+          e6efae9807c416ddff0c2e834e78f4f15e8093c40ed0a74071fae9df1d7ce273  web/app.js
+          d2ab0bfd774bd8fcee02d5ba2f682d9d11b4ba318d35f69b435746b55fa3b31b  web/archive-core.js
+          6f5dae37a3321d18feb93837088adc5d7a19f31d9097aa745c190b0594e725d1  web/core.js
+          e6f4879325a198badf0ab4d515c2a46b021c4d55b3e12b76c4d8fe35d15ded06  web/index.html
+          5fbc77deec8bda1a20655dc77fd18b9ccae92070b3c3fa5eb5316dd0f230c318  web/platform.js
+          1971f5e6181d4eda542a3d00497e72d0892a1befab4426f07e14d0ea3992a55c  native/android-overlay/app/src/main/java/app/codedump/tool/CodeDumpNativePlugin.kt
+          BASELINE
+
+          mkdir -p audit-upgrade
+          cat audit-upgrade-payload/upgrade.tar.gz.b64.* | tr -d '\n' | base64 --decode > /tmp/audit-upgrade.tar.gz
+          test "$(sha256sum /tmp/audit-upgrade.tar.gz | awk '{print $1}')" = "c1ff012daad44eb4e44bcf912d1765a5176a17d97ba90e97b16df1966456bd82"
+          tar -tzf /tmp/audit-upgrade.tar.gz >/dev/null
+          tar -xzf /tmp/audit-upgrade.tar.gz -C audit-upgrade
+          test "$(sha256sum audit-upgrade/runtime.patch | awk '{print $1}')" = "4596d9e9edf0d508fd72d49fd81f8e8a8ae14ddadc29259e4a0041cb2c413e36"
+          (
+            cd web
+            patch --batch -p0 < ../audit-upgrade/runtime.patch
+          )
+          cp audit-upgrade/audit-pack.js web/audit-pack.js
+
+          mkdir -p audit-hotfix/materialised
+          tr -d '\n' < audit-hotfix/audit-pack-1.0.1.tar.gz.b64 | base64 --decode > /tmp/audit-pack-1.0.1-hotfix.tar.gz
+          test "$(sha256sum /tmp/audit-pack-1.0.1-hotfix.tar.gz | awk '{print $1}')" = "3c0cd65041b4ee3e33f49a6675b81f057950b899eb6e0b22bb51ca794b42ff8b"
+          tar -tzf /tmp/audit-pack-1.0.1-hotfix.tar.gz >/dev/null
+          tar -xzf /tmp/audit-pack-1.0.1-hotfix.tar.gz -C audit-hotfix/materialised
+          test "$(sha256sum audit-hotfix/materialised/audit-pack.js | awk '{print $1}')" = "94f088a2755991fa55e641e9c2da843175488fd7ec5b91a296ebb44eef051fa8"
+          test "$(sha256sum audit-hotfix/materialised/audit-pack.test.cjs | awk '{print $1}')" = "929649ff9d711bb68944077aa55a8117ab8a183401f23d5f102a09717df408c9"
+          cp audit-hotfix/materialised/audit-pack.js web/audit-pack.js
+          cp audit-hotfix/materialised/audit-pack.test.cjs audit-upgrade/audit-pack.test.cjs
+
+          sha256sum -c <<'UPGRADED'
+          f653a7041be6629b751208c226d4110f20673b592ec935777fd31f58b2a65120  web/app.css
+          eddb2ba4c45e694885eaff13abf01c22b96ab07b2b595eaa08f15cd6c59fe4e3  web/app.js
+          d2ab0bfd774bd8fcee02d5ba2f682d9d11b4ba318d35f69b435746b55fa3b31b  web/archive-core.js
+          2e535453840c712c66824a979231bf798b2ebf23a2aa634d60c2629b703e1ac7  web/core.js
+          55fa382aba953fc8857900d522917387c8156296e98298191011fd81307de01e  web/index.html
+          5fbc77deec8bda1a20655dc77fd18b9ccae92070b3c3fa5eb5316dd0f230c318  web/platform.js
+          4f151a4362bc76c49298998b6b7dde0044b6e3ab8cbc08e2a93d1cd21af91fa0  web/sw.js
+          94f088a2755991fa55e641e9c2da843175488fd7ec5b91a296ebb44eef051fa8  web/audit-pack.js
+          UPGRADED
+          grep -q "GENERATOR_VERSION = '1.0.1'" web/audit-pack.js
+          grep -q 'PROJECT-WIDE FILE TREE' web/audit-pack.js
+          grep -q 'PROJECT-WIDE INVENTORY INDEX' web/audit-pack.js
+          grep -q 'small-project baseline coverage' web/audit-pack.js
+
+      - name: Set up Node 22
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: '22'
+
+      - name: Verify JavaScript and audit-pack regressions
+        working-directory: codedump
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check web/core.js
+          node --check web/audit-pack.js
+          node --check web/app.js
+          node --check web/platform.js
+          node --check web/archive-core.js
+          node --check web/archive-worker.js
+          node --check web/sw.js
+          node audit-upgrade/audit-pack.test.cjs
+          node -e "JSON.parse(require('fs').readFileSync('audit-upgrade/audit-pack.config.example.json','utf8'))"
+
+      - name: Set up Java 21
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699
+        with:
+          cmdline-tools-version: '14742923'
+          packages: ''
+          accept-android-sdk-licenses: true
+          log-accepted-android-sdk-licenses: false
+
+      - name: Install Android API 36 and Build Tools 36.0.0
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+          test -f "$ANDROID_SDK_ROOT/platforms/android-36/android.jar"
+          test -x "$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt2"
+
+      - name: Install pinned Capacitor and JSZip dependencies
+        working-directory: codedump
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --no-audit --no-fund
+          npm install --no-audit --no-fund --no-save jszip@3.10.1
+          node -e "for (const [p,v] of [['@capacitor/core','8.5.0'],['@capacitor/android','8.5.0'],['@capacitor/cli','8.5.0'],['jszip','3.10.1']]) if(require('./node_modules/'+p+'/package.json').version!==v) process.exit(1)"
+          mkdir -p web/vendor
+          cp node_modules/jszip/dist/jszip.min.js web/vendor/jszip.min.js
+
+      - name: Prepare Capacitor Android project
+        working-directory: codedump
+        run: node scripts/prepare-android.mjs
+
+      - name: Verify generated Android project
+        working-directory: codedump
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f android/gradlew
+          test -f android/app/src/main/java/app/codedump/tool/MainActivity.kt
+          test -f android/app/src/main/java/app/codedump/tool/CodeDumpNativePlugin.kt
+          grep -q "com.android.tools.build:gradle:8.13.2" android/build.gradle
+          grep -q "org.jetbrains.kotlin:kotlin-gradle-plugin:2.3.20" android/build.gradle
+          grep -q "androidx.documentfile:documentfile:1.1.0" android/app/build.gradle
+          grep -q "versionCode 2" android/app/build.gradle
+          grep -q 'versionName "1.1.0"' android/app/build.gradle
+          grep -q 'audit-pack.js' android/app/src/main/assets/public/index.html
+          grep -q "GENERATOR_VERSION = '1.0.1'" android/app/src/main/assets/public/audit-pack.js
+
+      - name: Run unit tests, lint and Android builds
+        working-directory: codedump/android
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew --no-daemon --stacktrace testDebugUnitTest lintDebug assembleDebug assembleRelease bundleRelease
+
+      - name: Stage build artefacts and provenance
+        if: success()
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          cp codedump/android/app/build/outputs/apk/debug/app-debug.apk artifacts/
+          find codedump/android/app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' -exec cp {} artifacts/ \;
+          find codedump/android/app/build/outputs/bundle/release -maxdepth 1 -type f -name '*.aab' -exec cp {} artifacts/ \;
+          {
+            echo "Carrier repository: $GITHUB_REPOSITORY"
+            echo "Carrier commit: $GITHUB_SHA"
+            echo "Run: $GITHUB_RUN_ID"
+            echo "Code Dump version: 1.1.0"
+            echo "Application ID: app.codedump.tool"
+            echo "10-Phase LLM Audit Pack Generator: 1.0.1"
+            echo "Audit upgrade payload SHA-256: c1ff012daad44eb4e44bcf912d1765a5176a17d97ba90e97b16df1966456bd82"
+            echo "Audit 1.0.1 hotfix payload SHA-256: 3c0cd65041b4ee3e33f49a6675b81f057950b899eb6e0b22bb51ca794b42ff8b"
+            echo "Audit engine SHA-256: 94f088a2755991fa55e641e9c2da843175488fd7ec5b91a296ebb44eef051fa8"
+            echo "Capacitor: 8.5.0"
+            echo "JSZip: 3.10.1"
+            echo "AGP: 8.13.2"
+            echo "Kotlin: 2.3.20"
+            echo "Java: 21"
+            echo "Android: API 36 / Build Tools 36.0.0"
+          } > artifacts/BUILD_INFO.txt
+          (cd artifacts && sha256sum *.apk *.aab BUILD_INFO.txt 2>/dev/null | sort > SHA256SUMS.txt)
+          cat artifacts/SHA256SUMS.txt
+
+      - name: Upload Code Dump 1.0.1 Android artefacts
+        if: success()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: code-dump-10phase-auditpack-1.0.1-${{ github.run_number }}
+          if-no-files-found: error
+          retention-days: 30
+          path: artifacts/
+
+      - name: Upload failure evidence
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: code-dump-10phase-auditpack-1.0.1-failure-${{ github.run_number }}
+          if-no-files-found: ignore
+          retention-days: 14
+          path: |
+            codedump/android/app/build/reports/
+            codedump/android/app/build/test-results/
+            codedump/android/app/build/outputs/logs/
