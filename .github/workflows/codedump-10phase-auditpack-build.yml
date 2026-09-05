@@ -57,7 +57,10 @@ jobs:
           tar -xzf /tmp/audit-upgrade.tar.gz -C audit-upgrade
           test "$(sha256sum audit-upgrade/runtime.patch | awk '{print $1}')" = "4596d9e9edf0d508fd72d49fd81f8e8a8ae14ddadc29259e4a0041cb2c413e36"
           test "$(sha256sum audit-upgrade/audit-pack.js | awk '{print $1}')" = "70ce915752840b80a185b90ff8236d51e64d4a68797393cb462c52c519df9545"
-          patch -p0 < audit-upgrade/runtime.patch
+          (
+            cd web
+            patch --batch -p0 < ../audit-upgrade/runtime.patch
+          )
           cp audit-upgrade/audit-pack.js web/audit-pack.js
 
           sha256sum -c <<'UPGRADED'
