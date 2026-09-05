@@ -1,0 +1,26 @@
+--- audit-pack.test.cjs
++++ audit-pack.test.cjs
+@@ -47,6 +47,23 @@
+   assert.ok(result.files.some(x=>x.name==='AUDIT_PACK_MANIFEST.json'));
+   assert.ok(result.files.some(x=>x.name==='AUDIT_PACK_INDEX.md'));
+ 
++  const deploymentOnly = [
++    f('deploy_runtime_gate.sh', '#!/usr/bin/env bash\nset -euo pipefail\necho "verify and deploy"\nsha256sum -c SHA256SUMS.txt\n'),
++    f('SHA256SUMS.txt', '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef  flux_forge_v3.1.5.zip\n')
++  ];
++  const deploymentPack = await Audit.generateAuditPack(deploymentOnly,{projectName:'flux_forge_v3.1.5_runtime_gate_repaired_deployment_04092026121000.zip',sourceRoot:'archive',maxPackTokens:30000},{yieldFn:()=>Promise.resolve()});
++  const phaseOne = deploymentPack.packs.find(p=>p.phaseId===1);
++  assert.equal(deploymentPack.validation.ok,true,deploymentPack.validation.errors.join('\n'));
++  assert.equal(phaseOne.includedPaths.length,2,'Phase 01 must not silently drop a two-file deployment project');
++  assert.ok(phaseOne.includedPaths.includes('deploy_runtime_gate.sh'));
++  assert.ok(phaseOne.includedPaths.includes('SHA256SUMS.txt'));
++  assert.ok(phaseOne.text.includes('PROJECT-WIDE FILE TREE'));
++  assert.ok(phaseOne.text.includes('PROJECT-WIDE INVENTORY INDEX'));
++  assert.ok(phaseOne.text.includes('deploy_runtime_gate.sh'));
++  assert.ok(phaseOne.text.includes('SHA256SUMS.txt'));
++  assert.ok(!phaseOne.text.includes('Relevant inventory records: 0'));
++  assert.ok(!phaseOne.text.includes('No source segment fitted the configured hard token budget'));
++
+   const standard=[f('a.js','console.log(1);'),f('b.txt','hello')];
+   const dump=Core.generateDumpText(standard);
+   const parsed=Core.parseCodeDump(dump);
