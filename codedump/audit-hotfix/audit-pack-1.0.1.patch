@@ -1,0 +1,114 @@
+--- audit-pack.js
++++ audit-pack.js
+@@ -8,7 +8,7 @@
+ 
+   if (!Core) throw new Error('CodeDumpCore is required before CodeDumpAuditPack.');
+ 
+-  const GENERATOR_VERSION = '1.0.0';
++  const GENERATOR_VERSION = '1.0.1';
+   const DEFAULT_OPTIONS = Object.freeze({
+     targetContextTokens: 128000,
+     maxPackTokens: 95000,
+@@ -123,6 +123,8 @@
+   const DOC_PATH_RE = /\.(?:md|mdx|rst|adoc|txt)$/iu;
+   const CONFIG_PATH_RE = /(?:^|\/)(?:package(?:-lock)?\.json|pyproject\.toml|requirements\.txt|composer\.json|go\.mod|cargo\.toml|tsconfig[^/]*\.json|vite\.config|webpack|babel|gradle|androidmanifest|capacitor\.config|app\.json|manifest\.webmanifest|\.env(?:\.|$))/iu;
+   const ENTRY_PATH_RE = /(?:^|\/)(?:index|main|app|bootstrap|startup|entry)(?:\.[^/]+|\/)/iu;
++  const SHELL_BOOTSTRAP_PATH_RE = /(?:^|\/)(?:makefile|dockerfile|[^/]+\.(?:sh|bash|zsh|fish|cmd|bat|ps1))$/iu;
++  const INTEGRITY_PATH_RE = /(?:^|\/)(?:(?:sha(?:1|224|256|384|512)|md5)(?:sums?)?|checksums?|checksum|digests?|hashes?)(?:\.[^/]*)?$|\.(?:sha1|sha224|sha256|sha384|sha512|md5)$/iu;
+ 
+   function clampInt(value, min, max, fallback) {
+     const n = Number(value);
+@@ -330,6 +332,8 @@
+     if (CONFIG_PATH_RE.test(path)) { scores[1]+=2.0; scores[9]+=1.0; reasons[1].push('core configuration/manifest'); reasons[9].push('build/operations configuration'); }
+     if (ENTRY_PATH_RE.test(path)) { scores[1]+=1.6; scores[10]+=.8; reasons[1].push('probable application entry/core file'); }
+     if (TEST_PATH_RE.test(path)) { scores[9]+=2.5; reasons[9].push('test/specification file'); }
++    if (SHELL_BOOTSTRAP_PATH_RE.test(path)) { scores[1]+=2.6; scores[9]+=3.0; reasons[1].push('shell/bootstrap/deployment script'); reasons[9].push('shell/build/deployment script'); }
++    if (INTEGRITY_PATH_RE.test(path)) { scores[1]+=2.2; scores[8]+=.8; scores[9]+=2.8; reasons[1].push('project integrity/checksum record'); reasons[8].push('artifact integrity evidence'); reasons[9].push('build/deployment checksum evidence'); }
+     if (record.binary) { scores[5]+=.5; scores[7]+=.4; scores[9]+=.4; }
+ 
+     const overridePhases = matchingOverridePhases(path, config);
+@@ -525,6 +529,35 @@
+     }
+   }
+ 
++  function addPhaseRelevance(record, phaseId, minScore, reason) {
++    const current=Number(record.classification.phaseScores[phaseId]||0);
++    record.classification.phaseScores[phaseId]=Math.max(current,minScore);
++    if(record.classification.primaryPhase!==phaseId && !record.classification.secondaryPhases.includes(phaseId)) record.classification.secondaryPhases.push(phaseId);
++    record.classification.secondaryPhases.sort((a,b)=>a-b);
++    const reasons=record.classification.phaseReasons[phaseId] || [];
++    reasons.push(reason);
++    record.classification.phaseReasons[phaseId]=[...new Set(reasons)].slice(0,8);
++  }
++
++  function ensureBaselineCoverage(records) {
++    const auditable=records.filter(r=>!r.binary && r.contentAvailable && !r.excludedReason && !r.duplicateOf);
++    if(!auditable.length) return;
++    const phaseOne=auditable.filter(r=>recordRelevantToPhase(r,1));
++    if(auditable.length<=24) {
++      for(const record of auditable) addPhaseRelevance(record,1,.42,'small-project baseline coverage: all available text/code records are included so Phase 01 can establish project shape and boot evidence');
++      return;
++    }
++    if(phaseOne.length) return;
++    const ranked=auditable.slice().sort((a,b)=>{
++      const foundationA=(CONFIG_PATH_RE.test(a.path)||ENTRY_PATH_RE.test(a.path)||SHELL_BOOTSTRAP_PATH_RE.test(a.path)||INTEGRITY_PATH_RE.test(a.path))?0:1;
++      const foundationB=(CONFIG_PATH_RE.test(b.path)||ENTRY_PATH_RE.test(b.path)||SHELL_BOOTSTRAP_PATH_RE.test(b.path)||INTEGRITY_PATH_RE.test(b.path))?0:1;
++      if(foundationA!==foundationB) return foundationA-foundationB;
++      const depthA=(a.path.match(/\//gu)||[]).length, depthB=(b.path.match(/\//gu)||[]).length;
++      return depthA-depthB || a.path.localeCompare(b.path);
++    }).slice(0,Math.min(12,auditable.length));
++    for(const record of ranked) addPhaseRelevance(record,1,.40,'baseline coverage fallback: representative top-level/foundational source retained because no file otherwise qualified for Phase 01');
++  }
++
+   function roleForRecord(record) {
+     const p=record.path.toLowerCase();
+     if(/(?:components?|pages?|screens?|views?|ui|\.html$|\.tsx$|\.jsx$)/u.test(p)) return 'UI';
+@@ -708,15 +741,17 @@
+     const binaryBlocks=options.includeBinaryMetadata ? relevantRecords.filter(r=>r.binary && r.binaryTreatment!=='exclude').slice(0,200).map(r=>binaryMetadata(r,phase.id)) : [];
+     const inventory=relevantRecords.map(compactInventoryLine).join('\n');
+     const relevantTree=buildTree(relevantRecords);
++    const projectWideInventory=records.map(compactInventoryLine).join('\n');
++    const projectWideTree=phase.id===1 ? buildTree(records) : '';
+     const quota = fraction => Math.max(180, Math.floor(options.maxPackTokens * fraction));
+     const baseSections=[
+       commonPrompt(phase),
+       projectSummary(projectName,records,options.sourceRoot,duplicates,errors),
+       `CROSS-PHASE INDEX\n${boundedLines(phaseIndexText(phase.id,records,phaseSummaries),quota(.05),'cross-phase index')}`,
+-      `RELEVANT FILE TREE\n${boundedLines(relevantTree,quota(.06),'file-tree')}`,
++      phase.id===1?`PROJECT-WIDE FILE TREE\n${boundedLines(projectWideTree,quota(.08),'project-wide file-tree')}\n\nPHASE-RELEVANT FILE TREE\n${boundedLines(relevantTree,quota(.05),'phase file-tree')}`:`RELEVANT FILE TREE\n${boundedLines(relevantTree,quota(.06),'file-tree')}`,
+       `FEATURE / WORKFLOW MAP\n${boundedLines(featureMapText(features,phase.id),quota(.08),'feature/workflow map')}`,
+       options.includeDependencyMetadata?`DEPENDENCY / CROSS-REFERENCE MAP\n${boundedLines(dependencyText(records,phase.id),quota(.08),'dependency-map')}`:'DEPENDENCY / CROSS-REFERENCE MAP\nDisabled by generator setting; classification still used lightweight dependency signals.',
+-      `PHASE-RELEVANT PROJECT INVENTORY\n${boundedLines(inventory,quota(.08),'inventory')}`,
++      phase.id===1?`PROJECT-WIDE INVENTORY INDEX\n${boundedLines(projectWideInventory,quota(.10),'project-wide inventory')}\n\nPHASE-RELEVANT PROJECT INVENTORY\n${boundedLines(inventory,quota(.07),'phase inventory')}`:`PHASE-RELEVANT PROJECT INVENTORY\n${boundedLines(inventory,quota(.08),'inventory')}`,
+       binaryBlocks.length?`BINARY / LARGE-FILE METADATA\n${boundedLines(binaryBlocks.join('\n\n'),quota(.04),'binary-metadata')}`:'BINARY / LARGE-FILE METADATA\nNo phase-relevant binary metadata included.',
+       `FILE READ / ANALYSIS ERRORS\n${boundedLines(fileErrorsText(errors),quota(.03),'error-ledger')}`
+     ];
+@@ -736,7 +771,7 @@
+ 
+     const manifest=boundedLines(phaseManifestText(records,phase.id,includedPaths,omittedPaths),quota(.10),'phase-manifest');
+     const omitted=boundedLines(omittedText(records,phase.id,omittedPaths),quota(.10),'omission-ledger');
+-    let body=[...baseSections.slice(0,2),manifest,...baseSections.slice(2),`OMITTED / REFERENCE-ONLY FILES\n${omitted}`,`SELECTED SOURCE CODE\n${sourceSections.length?sourceSections.join('\n\n'):'No source segment fitted the configured hard token budget; use the manifest and omission ledger to identify required follow-up evidence.'}`].join('\n\n============================================================\n\n');
++    let body=[...baseSections.slice(0,2),manifest,...baseSections.slice(2),`OMITTED / REFERENCE-ONLY FILES\n${omitted}`,`SELECTED SOURCE CODE\n${sourceSections.length?sourceSections.join('\n\n'):(candidates.length?'No source segment fitted the configured hard token budget; use the manifest and omission ledger to identify required follow-up evidence.':'No eligible phase-relevant source segment was available. Review project-wide inventory, phase classification and file-read/secret/exclusion records.')}`].join('\n\n============================================================\n\n');
+ 
+     let estimated=estimateTokens(body);
+     while(estimated>options.maxPackTokens && sourceSections.length) {
+@@ -811,6 +846,11 @@
+     }
+     for(let i=1;i<=10;i++) if(!ids.has(i)) errors.push(`Phase ${i} output missing.`);
+     if(!packs.find(p=>p.phaseId===10)?.text.includes('Phase 01–09 index') && !packs.find(p=>p.phaseId===10)?.text.includes('CROSS-PHASE INDEX')) errors.push('Phase 10 lacks cross-phase/index information.');
++    const phaseOne=packs.find(p=>p.phaseId===1);
++    const auditableText=context.records.filter(r=>!r.binary && r.contentAvailable && !r.excludedReason && !r.duplicateOf);
++    if(phaseOne && auditableText.length && phaseOne.includedPaths.length===0) errors.push('Phase 01 contains zero source files despite available auditable text/code records.');
++    if(phaseOne && !phaseOne.text.includes('PROJECT-WIDE FILE TREE')) errors.push('Phase 01 lacks project-wide file tree.');
++    if(phaseOne && !phaseOne.text.includes('PROJECT-WIDE INVENTORY INDEX')) errors.push('Phase 01 lacks project-wide inventory index.');
+     const inventorySet=new Set(context.records.map(r=>r.path));
+     if(inventorySet.size!==context.records.length) warnings.push('Inventory contains path collisions after normalisation; collision policy should be reviewed.');
+     for(const record of context.records) if(!record.path) errors.push('Inventory record with empty path.');
+@@ -843,6 +883,7 @@
+     }
+     progress({stage:'Building dependency map',current:0,total:records.length});
+     applyReferenceGraph(records);
++    ensureBaselineCoverage(records);
+     const duplicates=findDuplicates(records,options.duplicateDetection);
+     progress({stage:'Mapping workflows',current:0,total:records.length});
+     const features=buildFeatureMap(records);
