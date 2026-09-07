@@ -1,6 +1,6 @@
 {
   "name": "code-dump-tool-android-carrier",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "private": true,
   "scripts": {
     "android:prepare": "node scripts/prepare-android.mjs"
