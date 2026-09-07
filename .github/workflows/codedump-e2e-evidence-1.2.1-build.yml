@@ -1,0 +1,231 @@
+name: Code Dump v1.2.1 E2E Evidence Build
+
+on:
+  push:
+    branches: [ codedump-e2e-evidence-1.2.1-07092026 ]
+    paths:
+      - 'codedump/e2e-evidence-fix/**'
+      - 'codedump/package.json'
+      - 'codedump/android-release.json'
+      - '.github/workflows/codedump-e2e-evidence-1.2.1-build.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: codedump-e2e-evidence-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CI: true
+
+jobs:
+  build:
+    name: Verify E2E evidence parser and build Android artefacts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout carrier branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Materialise verified Code Dump audit baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd codedump
+          cat overlay-chunks/overlay.{00..13} overlay-chunks/overlay.14a overlay-chunks/overlay.14b overlay-chunks/overlay.14c overlay-chunks/overlay.{15..17} > /tmp/codedump-green-overlay.tar.gz.b64
+          test "$(wc -c < /tmp/codedump-green-overlay.tar.gz.b64)" -eq 104336
+          test "$(sha256sum /tmp/codedump-green-overlay.tar.gz.b64 | awk '{print $1}')" = "06d888899f0a3f67ca4254aef7fc81af9d9c9eeaf90205791fdb204c87082a67"
+          base64 --decode /tmp/codedump-green-overlay.tar.gz.b64 > /tmp/codedump-green-overlay.tar.gz
+          test "$(sha256sum /tmp/codedump-green-overlay.tar.gz | awk '{print $1}')" = "b3028e80b7cac2308c105337c020d3a66ecde12e3dfa094ca6f6bdbe18d7e87f"
+          tar -xzf /tmp/codedump-green-overlay.tar.gz
+
+          mkdir -p audit-upgrade
+          cat audit-upgrade-payload/upgrade.tar.gz.b64.* | tr -d '\n' | base64 --decode > /tmp/audit-upgrade.tar.gz
+          test "$(sha256sum /tmp/audit-upgrade.tar.gz | awk '{print $1}')" = "c1ff012daad44eb4e44bcf912d1765a5176a17d97ba90e97b16df1966456bd82"
+          tar -xzf /tmp/audit-upgrade.tar.gz -C audit-upgrade
+          (
+            cd web
+            patch --batch -p0 < ../audit-upgrade/runtime.patch
+          )
+          cp audit-upgrade/audit-pack.js web/audit-pack.js
+          test "$(sha256sum web/audit-pack.js | awk '{print $1}')" = "70ce915752840b80a185b90ff8236d51e64d4a68797393cb462c52c519df9545"
+
+      - name: Apply verified Audit Pack 1.0.1 baseline fix
+        working-directory: codedump
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(sha256sum audit-hotfix/audit-pack-1.0.1.patch | awk '{print $1}')" = "56ff27f37252727c1d83aaae5b03bd48e98a13ec6066c2c0a9247743c6897062"
+          test "$(sha256sum audit-hotfix/audit-pack-1.0.1-test.patch | awk '{print $1}')" = "e1bde20dad1a0e994ef90b9b6ea808b79a096cb11515177fedb6f0d512c8ab05"
+          (
+            cd web
+            patch --batch -p0 < ../audit-hotfix/audit-pack-1.0.1.patch
+          )
+          (
+            cd audit-upgrade
+            patch --batch -p0 < ../audit-hotfix/audit-pack-1.0.1-test.patch
+          )
+          test "$(sha256sum web/audit-pack.js | awk '{print $1}')" = "94f088a2755991fa55e641e9c2da843175488fd7ec5b91a296ebb44eef051fa8"
+
+      - name: Apply verified Code Dump 1.2.0 multi-audit baseline
+        working-directory: codedump
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(wc -c < multiaudit-upgrade/payload.b64.00)" -eq 12000
+          test "$(wc -c < multiaudit-upgrade/payload.b64.01)" -eq 12000
+          test "$(wc -c < multiaudit-upgrade/payload.b64.02)" -eq 8576
+          test "$(sha256sum multiaudit-upgrade/payload.b64.00 | awk '{print $1}')" = "440a33ad66beae721db030616e5c0a8e1cac55b9b60b4d3bb89342017fb2f9b8"
+          test "$(sha256sum multiaudit-upgrade/payload.b64.01 | awk '{print $1}')" = "83799d7c4198226dcb3c9b1cd39feeb7c69f154587051bce198bbbb70f7c6103"
+          test "$(sha256sum multiaudit-upgrade/payload.b64.02 | awk '{print $1}')" = "1e0a301a90a47ee47174b83c6e97334a238120bb1ed8fce26b324a44c9261931"
+          cat multiaudit-upgrade/payload.b64.* > /tmp/multiaudit-upgrade.tar.gz.b64
+          base64 --decode /tmp/multiaudit-upgrade.tar.gz.b64 > /tmp/multiaudit-upgrade.tar.gz
+          test "$(sha256sum /tmp/multiaudit-upgrade.tar.gz | awk '{print $1}')" = "7e97cb996e3684bbfb9207a493967979515dcbd08c8c3a79ae1fe4ac91c778b1"
+          mkdir -p multiaudit-upgrade/materialised
+          tar -xzf /tmp/multiaudit-upgrade.tar.gz -C multiaudit-upgrade/materialised
+          test "$(sha256sum multiaudit-upgrade/materialised/multiaudit-web.patch | awk '{print $1}')" = "900eaa28bc5378789111bc7481c3d364740fe0caf662d9ade27a997a26970862"
+          test "$(sha256sum multiaudit-upgrade/materialised/audit-pack.test.cjs | awk '{print $1}')" = "d503301a97e6608bfd346a279c8aca7f5673bcf1094378d77d462a9ddfc73bc4"
+          patch --batch -p1 < multiaudit-upgrade/materialised/multiaudit-web.patch
+          cp multiaudit-upgrade/materialised/audit-pack.test.cjs audit-upgrade/audit-pack.test.cjs
+          test "$(sha256sum web/audit-pack.js | awk '{print $1}')" = "eddc76c880366a410002ead0487674568af9d26624ef7d56da7b23118d3b3334"
+          grep -q "GENERATOR_VERSION = '1.1.0'" web/audit-pack.js
+
+      - name: Apply E2E critical-spine evidence fix
+        working-directory: codedump
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(sha256sum e2e-evidence-fix/audit-pack-1.1.1.patch | awk '{print $1}')" = "b778ec23221b5f9970eb91e17a79ca4c678ae2402b6eb82765d42a6fa74906e9"
+          test "$(sha256sum e2e-evidence-fix/regression-e2e-spine.cjs | awk '{print $1}')" = "4f2b396e6fa8ef5b410c276f746a963cfe3e8fe29ab51fa5e91d27cab5ef464e"
+          (
+            cd web
+            patch --batch -p0 < ../e2e-evidence-fix/audit-pack-1.1.1.patch
+          )
+          test "$(sha256sum web/audit-pack.js | awk '{print $1}')" = "63b7f4a4b5ea5ba60efc7de0172b8189b1cb4245eef23b83bf078485218f73a3"
+          grep -q "GENERATOR_VERSION = '1.1.1'" web/audit-pack.js
+          grep -q 'CRITICAL-SPINE' web/audit-pack.js
+          grep -q 'Critical-spine records missing' web/audit-pack.js
+
+      - name: Set up Node 22
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: '22'
+
+      - name: Run JavaScript and audit regression verification
+        working-directory: codedump
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check web/core.js
+          node --check web/audit-pack.js
+          node --check web/app.js
+          node --check web/platform.js
+          node --check web/archive-core.js
+          node --check web/archive-worker.js
+          node --check web/sw.js
+          node audit-upgrade/audit-pack.test.cjs
+          node e2e-evidence-fix/regression-e2e-spine.cjs web/audit-pack.js
+          node -e "JSON.parse(require('fs').readFileSync('audit-upgrade/audit-pack.config.example.json','utf8'))"
+
+      - name: Set up Java 21
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699
+        with:
+          cmdline-tools-version: '14742923'
+          packages: ''
+          accept-android-sdk-licenses: true
+          log-accepted-android-sdk-licenses: false
+
+      - name: Install Android API 36 and Build Tools 36.0.0
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+          test -f "$ANDROID_SDK_ROOT/platforms/android-36/android.jar"
+          test -x "$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt2"
+
+      - name: Install pinned Capacitor and JSZip dependencies
+        working-directory: codedump
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --no-audit --no-fund
+          npm install --no-audit --no-fund --no-save jszip@3.10.1
+          node -e "for (const [p,v] of [['@capacitor/core','8.5.0'],['@capacitor/android','8.5.0'],['@capacitor/cli','8.5.0'],['jszip','3.10.1']]) if(require('./node_modules/'+p+'/package.json').version!==v) process.exit(1)"
+          mkdir -p web/vendor
+          cp node_modules/jszip/dist/jszip.min.js web/vendor/jszip.min.js
+
+      - name: Prepare and verify Android project
+        working-directory: codedump
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/prepare-android.mjs
+          test -f android/gradlew
+          test -f android/app/src/main/java/app/codedump/tool/MainActivity.kt
+          test -f android/app/src/main/java/app/codedump/tool/CodeDumpNativePlugin.kt
+          grep -q "com.android.tools.build:gradle:8.13.2" android/build.gradle
+          grep -q "org.jetbrains.kotlin:kotlin-gradle-plugin:2.3.20" android/build.gradle
+          grep -q "androidx.documentfile:documentfile:1.1.0" android/app/build.gradle
+          grep -q "versionCode 4" android/app/build.gradle
+          grep -q 'versionName "1.2.1"' android/app/build.gradle
+          grep -q "GENERATOR_VERSION = '1.1.1'" android/app/src/main/assets/public/audit-pack.js
+          test "$(sha256sum android/app/src/main/assets/public/audit-pack.js | awk '{print $1}')" = "63b7f4a4b5ea5ba60efc7de0172b8189b1cb4245eef23b83bf078485218f73a3"
+          test "$(sha256sum android/app/src/main/assets/public/core.js | awk '{print $1}')" = "a0b0f2adf168bc71d3bc9f73c02bd2e153ee98e8d9abf3ac3a03d29b554ec6ad"
+          test "$(sha256sum android/app/src/main/assets/public/app.js | awk '{print $1}')" = "9daf81e703974cf9c47198523aa1f37ebd0c8ddcab93d670f8a6801ef8479da8"
+
+      - name: Run unit tests, lint and Android builds
+        working-directory: codedump/android
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew --no-daemon --stacktrace testDebugUnitTest lintDebug assembleDebug assembleRelease bundleRelease
+
+      - name: Stage build artefacts and provenance
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          cp codedump/android/app/build/outputs/apk/debug/app-debug.apk artifacts/
+          find codedump/android/app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' -exec cp {} artifacts/ \;
+          find codedump/android/app/build/outputs/bundle/release -maxdepth 1 -type f -name '*.aab' -exec cp {} artifacts/ \;
+          {
+            echo "Carrier repository: $GITHUB_REPOSITORY"
+            echo "Carrier commit: $GITHUB_SHA"
+            echo "Run: $GITHUB_RUN_ID"
+            echo "Code Dump version: 1.2.1"
+            echo "Application ID: app.codedump.tool"
+            echo "Audit Pack Generator: 1.1.1"
+            echo "E2E evidence strategy: critical-spine + breadth-before-depth + evidence-first metadata budgeting"
+            echo "E2E parser patch SHA-256: b778ec23221b5f9970eb91e17a79ca4c678ae2402b6eb82765d42a6fa74906e9"
+            echo "501-file E2E regression SHA-256: 4f2b396e6fa8ef5b410c276f746a963cfe3e8fe29ab51fa5e91d27cab5ef464e"
+            echo "Audit engine SHA-256: 63b7f4a4b5ea5ba60efc7de0172b8189b1cb4245eef23b83bf078485218f73a3"
+            echo "Core SHA-256: a0b0f2adf168bc71d3bc9f73c02bd2e153ee98e8d9abf3ac3a03d29b554ec6ad"
+            echo "App SHA-256: 9daf81e703974cf9c47198523aa1f37ebd0c8ddcab93d670f8a6801ef8479da8"
+            echo "Capacitor: 8.5.0"
+            echo "JSZip: 3.10.1"
+            echo "AGP: 8.13.2"
+            echo "Kotlin: 2.3.20"
+            echo "Java: 21"
+            echo "Android: API 36 / Build Tools 36.0.0"
+          } > artifacts/BUILD_INFO.txt
+          (cd artifacts && sha256sum *.apk *.aab BUILD_INFO.txt 2>/dev/null | sort > SHA256SUMS.txt)
+          cat artifacts/SHA256SUMS.txt
+
+      - name: Upload Code Dump 1.2.1 Android artefacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: code-dump-v1.2.1-e2e-evidence-${{ github.run_number }}
+          if-no-files-found: error
+          retention-days: 30
+          path: artifacts/
