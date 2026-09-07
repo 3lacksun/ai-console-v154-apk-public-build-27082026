@@ -1,0 +1,286 @@
+--- audit-pack.js
++++ audit-pack.js
+@@ -8,7 +8,7 @@
+ 
+   if (!Core) throw new Error('CodeDumpCore is required before CodeDumpAuditPack.');
+ 
+-  const GENERATOR_VERSION = '1.1.0';
++  const GENERATOR_VERSION = '1.1.1';
+   const DEFAULT_OPTIONS = Object.freeze({
+     targetContextTokens: 128000,
+     maxPackTokens: 95000,
+@@ -1097,10 +1097,103 @@
+ Do not rewrite or redesign the application unless explicitly asked to remediate it.`;
+   }
+ 
+-  function focusedCandidateSegments(records, spec, relevant) {
++
++  function focusedWorkflowBucket(record) {
++    const p=String(record.path||'').toLowerCase();
++    const c=String(record.content||'').slice(0,120000).toLowerCase();
++    const role=roleForRecord(record);
++    if(TEST_PATH_RE.test(record.path)) return 'TEST';
++    if(CONFIG_PATH_RE.test(record.path)) return 'CONFIG';
++    if(/(?:service[-_.]?worker|(?:^|\/)sw\.(?:js|ts)$|worker\.(?:js|ts)$|native|bridge|capacitor|cordova)/u.test(p) || /serviceworker|navigator\.serviceworker|postmessage\(/u.test(c)) return 'RUNTIME';
++    if(role==='UI' || /(?:^|\/)(?:app|main|index|client|frontend)\.(?:js|ts|jsx|tsx|vue|svelte)$/u.test(p) || /addeventlistener\(|document\.queryselector|document\.getelementbyid|reactdom|createapp\(/u.test(c)) return 'UI';
++    if(role==='API' || (record.routes||[]).length || /(?:@app\.route|@router\.|fastapi|flask|express\(|router\.(?:get|post|put|patch|delete)|request\.(?:json|form|files))/u.test(c)) return 'API';
++    if(role==='DATA' || /(?:sqlite|indexeddb|localstorage|repository|database|migration|create table|insert into|update\s+\w+\s+set)/u.test(c)) return 'DATA';
++    if(role==='BACKEND' || /(?:runtime|orchestrat|provider|engine|workflow|manager|service|usecase|use-case|_provider_request)/u.test(p+' '+c.slice(0,24000))) return 'BACKEND';
++    return 'SUPPORT';
++  }
++
++  function focusedBridgeCriticality(record, spec) {
++    const p=String(record.path||'').toLowerCase();
++    const c=String(record.content||'').slice(0,90000).toLowerCase();
++    let score=0;
++    if(record.explicitlyIncluded) score+=16;
++    if(record.sharedCore) score+=12;
++    if(ENTRY_PATH_RE.test(record.path)) score+=10;
++    if(CONFIG_PATH_RE.test(record.path)) score+=4;
++    score+=Math.min(8,((record.dependencies||[]).length+(record.referencedBy||[]).length)*.45);
++    score+=Math.min(5,(record.routes||[]).length*.5);
++    const bucket=focusedWorkflowBucket(record);
++    if(spec.id==='e2e') {
++      if(['UI','API','BACKEND','DATA','RUNTIME'].includes(bucket)) score+=7;
++      if(/(?:^|\/)(?:app|main|index|client|frontend)\.(?:js|ts|jsx|tsx|py|php|rb|go|java|kt|swift)$/u.test(p)) score+=12;
++      if(/(?:service[-_.]?worker|(?:^|\/)sw\.(?:js|ts)$)/u.test(p)) score+=14;
++      if(/(?:runtime|orchestrat|workspace[_-]?core|app[_-]?core|core|router|routes|controller|provider|store|state|repository|database|storage)/u.test(p)) score+=9;
++      if(/addeventlistener\(|onclick|onsubmit|fetch\(|axios\.|xmlhttprequest|websocket|eventsource|navigator\.serviceworker/u.test(c)) score+=8;
++      if(/@app\.route|@router\.|router\.(?:get|post|put|patch|delete)|request\.(?:json|form|files)/u.test(c)) score+=7;
++      if(/sqlite|indexeddb|localstorage|sessionstorage|create table|insert into|update\s+\w+\s+set/u.test(c)) score+=5;
++      if(/provider|orchestrat|stream|retry|cancel|abortcontroller|offline|sync/u.test(c)) score+=4;
++    }
++    return score;
++  }
++
++  function focusedChunkSignalScore(chunk, record, spec) {
++    const t=String(chunk.text||'').toLowerCase();
++    let score=Math.min(3,estimateTokens(chunk.text)/3500);
++    if(spec.id==='e2e') {
++      const pats=[
++        [/(?:addeventlistener|onclick|onsubmit|onchange|queryselector|getelementbyid|createelement|render|setstate|dispatch)/u,4],
++        [/(?:fetch\(|axios\.|xmlhttprequest|websocket|eventsource|\/api\/|request\.(?:json|form|files))/u,4],
++        [/(?:@app\.route|@router\.|router\.(?:get|post|put|patch|delete)|def\s+\w+|async\s+function|function\s+\w+)/u,3],
++        [/(?:sqlite|indexeddb|localstorage|sessionstorage|insert into|update\s+\w+\s+set|commit\(|repository|database)/u,3],
++        [/(?:serviceworker|caches\.|cache\.|offline|sync|postmessage|background|resume|restart)/u,3],
++        [/(?:provider|orchestrat|stream|retry|cancel|abortcontroller|timeout|error|catch\s*\()/u,2.5],
++        [/(?:upload|download|import|export|file|folder|permission|deeplink|deep link)/u,2]
++      ];
++      for(const [re,w] of pats) if(re.test(t)) score+=w;
++    } else if(spec.id==='uiux') {
++      if(/(?:media|viewport|safe-area|keyboard|focus|aria-|dialog|modal|sheet|nav|overflow|scroll|touch|pointer)/u.test(t)) score+=4;
++    } else if(spec.id==='security') {
++      if(/(?:auth|token|secret|csrf|cors|encrypt|decrypt|hash|sanitize|validate|permission|upload|path|tls|https)/u.test(t)) score+=4;
++    } else if(spec.id==='release') {
++      if(/(?:gradle|manifest|version|build|release|sign|workflow|docker|deploy|migration|test|lint|bundle|apk|aab)/u.test(t)) score+=4;
++    }
++    return score;
++  }
++
++  function focusedEssentialRecords(records, spec, relevant) {
++    if(spec.id!=='e2e') return [];
++    const eligible=relevant.filter(r=>!r.binary && r.contentAvailable && !r.excludedReason && !r.duplicateOf);
++    const byBucket=new Map();
++    for(const r of eligible) {
++      const bucket=focusedWorkflowBucket(r);
++      if(!byBucket.has(bucket)) byBucket.set(bucket,[]);
++      byBucket.get(bucket).push(r);
++    }
++    for(const arr of byBucket.values()) arr.sort((a,b)=>focusedBridgeCriticality(b,spec)-focusedBridgeCriticality(a,spec) || a.path.localeCompare(b.path));
++    const selected=new Map();
++    // Guarantee at least one source record from each major end-to-end layer when present.
++    for(const bucket of ['UI','API','BACKEND','DATA','RUNTIME']) {
++      const arr=byBucket.get(bucket)||[];
++      if(arr[0]) selected.set(arr[0].path,arr[0]);
++      if(arr[1] && focusedBridgeCriticality(arr[1],spec)>=14) selected.set(arr[1].path,arr[1]);
++    }
++    // Explicitly protect conventional bridge/runtime/core files from being starved by a single huge file.
++    const conventional=eligible.filter(r=>/(?:^|\/)(?:app|main|index|client|frontend)\.(?:js|ts|jsx|tsx|py|php|rb|go|java|kt|swift)$|service[-_.]?worker|(?:^|\/)sw\.(?:js|ts)$|runtime|orchestrat|workspace[_-]?core|app[_-]?core|(?:^|\/)core\.(?:js|ts|py|php)|router|routes|controller|provider/u.test(r.path.toLowerCase()))
++      .sort((a,b)=>focusedBridgeCriticality(b,spec)-focusedBridgeCriticality(a,spec) || a.path.localeCompare(b.path));
++    for(const r of conventional.slice(0,14)) selected.set(r.path,r);
++    // Add graph hubs that connect otherwise separate layers.
++    const hubs=eligible.filter(r=>focusedBridgeCriticality(r,spec)>=8 || (r.dependencies||[]).length || (r.referencedBy||[]).length || (r.routes||[]).length)
++      .sort((a,b)=>focusedBridgeCriticality(b,spec)-focusedBridgeCriticality(a,spec) || a.path.localeCompare(b.path)).slice(0,10);
++    for(const r of hubs) selected.set(r.path,r);
++    return [...selected.values()].sort((a,b)=>focusedBridgeCriticality(b,spec)-focusedBridgeCriticality(a,spec) || a.path.localeCompare(b.path)).slice(0,9);
++  }
++
++  function focusedCandidateSegments(records, spec, relevant, options) {
+     const relevantSet=new Set(relevant.map(r=>r.path));
+     const primary=new Set(spec.primaryPhases||[]);
++    const essentialPaths=new Set(focusedEssentialRecords(records,spec,relevant).map(r=>r.path));
+     const out=[];
++    const focusedChunkCap=Math.max(1800,Math.min(Number(options&&options.maxChunkTokens)||16000,spec.id==='e2e'?7000:10000));
+     for(const record of records) {
+       if(!relevantSet.has(record.path)) continue;
+       if(record.binary || !record.contentAvailable || record.excludedReason || record.duplicateOf) continue;
+@@ -1110,19 +1203,35 @@
+       if(primary.has(record.classification.primaryPhase)) score+=5;
+       if(record.classification.secondaryPhases.some(id=>primary.has(id))) score+=2.5;
+-      if(record.dependencies.length||record.referencedBy.length) score+=Math.min(2,(record.dependencies.length+record.referencedBy.length)*.15);
+-      let priority=4;
+-      if(record.explicitlyIncluded || record.sharedCore || CONFIG_PATH_RE.test(record.path) || ENTRY_PATH_RE.test(record.path) || primary.has(record.classification.primaryPhase)) priority=1;
+-      else if(record.classification.secondaryPhases.some(id=>primary.has(id)) || TEST_PATH_RE.test(record.path) || record.dependencies.length || record.referencedBy.length) priority=2;
+-      else if(roleForRecord(record)==='UI' || /(?:utils?|helpers?|styles?|theme)/iu.test(record.path)) priority=3;
+-      const chunks=record.chunks.length?record.chunks:[{index:1,total:1,startLine:1,endLine:1,text:record.content,estimatedTokens:estimateTokens(record.content),semantic:true}];
+-      const ranked=chunks.map(chunk=>({record,chunk,priority,score:score + Math.min(4,estimateTokens(chunk.text)/4000)}))
+-        .sort((a,b)=>b.score-a.score || a.chunk.index-b.chunk.index);
+-      const keepCount=priority===1?ranked.length:Math.max(1,Math.ceil(ranked.length*.65));
+-      out.push(...ranked.slice(0,keepCount));
++      if(record.dependencies.length||record.referencedBy.length) score+=Math.min(3,(record.dependencies.length+record.referencedBy.length)*.2);
++      score+=focusedBridgeCriticality(record,spec);
++      let priority=5;
++      if(essentialPaths.has(record.path)) priority=0;
++      else if(record.explicitlyIncluded || record.sharedCore || ENTRY_PATH_RE.test(record.path)) priority=1;
++      else if(CONFIG_PATH_RE.test(record.path) || primary.has(record.classification.primaryPhase)) priority=2;
++      else if(record.classification.secondaryPhases.some(id=>primary.has(id)) || TEST_PATH_RE.test(record.path) || record.dependencies.length || record.referencedBy.length) priority=3;
++      else if(roleForRecord(record)==='UI' || /(?:utils?|helpers?|styles?|theme)/iu.test(record.path)) priority=4;
++      const chunks=makeChunks(record,focusedChunkCap);
++      const ranked=chunks.map(chunk=>({record,chunk,priority,essential:essentialPaths.has(record.path),recordScore:score,chunkSignal:focusedChunkSignalScore(chunk,record,spec)}))
++        .sort((a,b)=>b.chunkSignal-a.chunkSignal || b.recordScore-a.recordScore || a.chunk.index-b.chunk.index);
++      // Breadth before depth: preserve a useful first slice of many connected files.
++      const keepCount=priority<=1?ranked.length:Math.max(1,Math.ceil(ranked.length*(spec.id==='e2e'?.5:.65)));
++      ranked.slice(0,keepCount).forEach((entry,index)=>out.push({...entry,coverageRound:index}));
+     }
+-    return out.sort((a,b)=>a.priority-b.priority || b.score-a.score || a.record.path.localeCompare(b.record.path) || a.chunk.index-b.chunk.index);
++    return out.sort((a,b)=>
++      a.priority-b.priority ||
++      a.coverageRound-b.coverageRound ||
++      b.recordScore-a.recordScore ||
++      b.chunkSignal-a.chunkSignal ||
++      a.record.path.localeCompare(b.record.path) ||
++      a.chunk.index-b.chunk.index
++    );
+   }
+ 
+   function focusedSourceBoundary(record, chunk, spec, relevance) {
+@@ -1165,7 +1274,9 @@
+     let relevant=focusedRelevantRecords(records,spec);
+     const eligibleAll=records.filter(r=>!r.binary && r.contentAvailable && !r.excludedReason && !r.duplicateOf);
+     if(eligibleAll.length<=24) relevant=[...new Map([...relevant,...eligibleAll].map(r=>[r.path,r])).values()].sort((a,b)=>a.path.localeCompare(b.path));
+     if(!relevant.some(r=>!r.binary && r.contentAvailable && !r.excludedReason && !r.duplicateOf) && eligibleAll.length) relevant=[...relevant,eligibleAll[0]];
+-    const candidates=focusedCandidateSegments(records,spec,relevant);
++    const essential=focusedEssentialRecords(records,spec,relevant);
++    const essentialPaths=new Set(essential.map(r=>r.path));
++    const candidates=focusedCandidateSegments(records,spec,relevant,options);
+     const includedPaths=new Set(), sourceSections=[];
+     const quota=fraction=>Math.max(180,Math.floor(options.maxPackTokens*fraction));
+     const completeInventory=records.map(compactInventoryLine).join('\n');
+@@ -1173,18 +1284,30 @@
+     const relevantInventory=relevant.map(compactInventoryLine).join('\n');
+-    const binaryBlocks=options.includeBinaryMetadata?relevant.filter(r=>r.binary && r.binaryTreatment!=='exclude').slice(0,220).map(r=>focusedBinaryMetadata(r,spec)):[];
++    const binaryBlocks=options.includeBinaryMetadata?relevant.filter(r=>r.binary && r.binaryTreatment!=='exclude').slice(0,160).map(r=>focusedBinaryMetadata(r,spec)):[];
++    // Focused audits are evidence-first. Metadata must not consume the majority of
++    // the context window and starve the actual source needed to trace workflows.
+     const baseSections=[
+       focusedPrompt(spec),
+       projectSummary(projectName,records,options.sourceRoot,duplicates,errors),
+-      `PROJECT-WIDE FILE TREE\n${boundedLines(buildTree(records),quota(.08),'project-wide file-tree')}`,
+-      `FOCUSED EVIDENCE FILE TREE\n${boundedLines(buildTree(relevant),quota(.06),'focused file-tree')}`,
+-      `FEATURE / WORKFLOW MAP\n${boundedLines(focusedFeatureMapText(features,spec),quota(.11),'feature/workflow map')}`,
+-      options.includeDependencyMetadata?`DEPENDENCY / CROSS-REFERENCE MAP\n${boundedLines(focusedDependencyText(records,relevant),quota(.09),'dependency-map')}`:'DEPENDENCY / CROSS-REFERENCE MAP\nDisabled by generator setting.',
+-      `ROUTE / DATA / SYMBOL EVIDENCE\n${boundedLines(focusedSignalText(relevant),quota(.08),'route/data/symbol evidence')}`,
+-      `PROJECT-WIDE INVENTORY INDEX\n${boundedLines(completeInventory,quota(.11),'project-wide inventory')}\n\nFOCUSED EVIDENCE INVENTORY\n${boundedLines(relevantInventory,quota(.08),'focused inventory')}`,
+-      binaryBlocks.length?`BINARY / LARGE-FILE METADATA\n${boundedLines(binaryBlocks.join('\n\n'),quota(.04),'binary metadata')}`:'BINARY / LARGE-FILE METADATA\nNo focused binary metadata included.',
+-      `FILE READ / ANALYSIS ERRORS\n${boundedLines(fileErrorsText(errors),quota(.03),'error-ledger')}`
++      `PROJECT-WIDE FILE TREE\n${boundedLines(buildTree(records),quota(.035),'project-wide file-tree')}`,
++      `FOCUSED EVIDENCE FILE TREE\n${boundedLines(buildTree(relevant),quota(.025),'focused file-tree')}`,
++      `FEATURE / WORKFLOW MAP\n${boundedLines(focusedFeatureMapText(features,spec),quota(.055),'feature/workflow map')}`,
++      options.includeDependencyMetadata?`DEPENDENCY / CROSS-REFERENCE MAP\n${boundedLines(focusedDependencyText(records,relevant),quota(.045),'dependency-map')}`:'DEPENDENCY / CROSS-REFERENCE MAP\nDisabled by generator setting.',
++      `ROUTE / DATA / SYMBOL EVIDENCE\n${boundedLines(focusedSignalText(relevant),quota(.035),'route/data/symbol evidence')}`,
++      `PROJECT-WIDE INVENTORY INDEX\n${boundedLines(completeInventory,quota(.055),'project-wide inventory')}\n\nFOCUSED EVIDENCE INVENTORY\n${boundedLines(relevantInventory,quota(.035),'focused inventory')}`,
++      binaryBlocks.length?`BINARY / LARGE-FILE METADATA\n${boundedLines(binaryBlocks.join('\n\n'),quota(.015),'binary metadata')}`:'BINARY / LARGE-FILE METADATA\nNo focused binary metadata included.',
++      `FILE READ / ANALYSIS ERRORS\n${boundedLines(fileErrorsText(errors),quota(.012),'error-ledger')}`
+     ];
+     const baseText=baseSections.join('\n\n============================================================\n\n');
+-    const metadataReserve=Math.max(600,Math.floor(options.maxPackTokens*.18));
+-    let budget=Math.max(0,options.maxPackTokens-options.sourceSafetyMarginTokens-metadataReserve-estimateTokens(baseText));
++    const omissionReserve=quota(.045);
++    let budget=Math.max(0,options.maxPackTokens-options.sourceSafetyMarginTokens-omissionReserve-estimateTokens(baseText));
++
++    // Pass 1: guarantee breadth across the end-to-end "critical spine". Only one
++    // best semantic chunk per essential file is attempted before any file can
++    // consume a second chunk.
++    if(spec.id==='e2e' && essential.length) {
++      for(const record of essential) {
++        const candidate=candidates.find(c=>c.record.path===record.path && c.coverageRound===0);
++        if(!candidate) continue;
++        const section=focusedSourceBoundary(candidate.record,candidate.chunk,spec,'CRITICAL-SPINE');
++        const tokens=estimateTokens(section);
++        if(tokens<=budget) { sourceSections.push(section); budget-=tokens; includedPaths.add(candidate.record.path); candidate.__used=true; }
++      }
++    }
++
++    // Pass 2: breadth-first candidate order, then depth. This prevents app.py,
++    // styles.css, or any other large file from monopolising the source budget.
+     for(const candidate of candidates) {
++      if(candidate.__used) continue;
+       const isPrimary=(spec.primaryPhases||[]).includes(candidate.record.classification.primaryPhase) || candidate.record.classification.secondaryPhases.some(id=>(spec.primaryPhases||[]).includes(id));
+-      const section=focusedSourceBoundary(candidate.record,candidate.chunk,spec,isPrimary?'PRIMARY':'SUPPORTING');
++      const relevance=essentialPaths.has(candidate.record.path)?'CRITICAL-SPINE':(isPrimary?'PRIMARY':'SUPPORTING');
++      const section=focusedSourceBoundary(candidate.record,candidate.chunk,spec,relevance);
+       const tokens=estimateTokens(section);
+       if(tokens<=budget) { sourceSections.push(section); budget-=tokens; includedPaths.add(candidate.record.path); }
+     }
+-    let omission=boundedLines(focusedOmittedText(records,relevant,[...includedPaths],options),quota(.11),'omission-ledger');
++    let omission=boundedLines(focusedOmittedText(records,relevant,[...includedPaths],options),quota(.055),'omission-ledger');
++    const missingEssential=essential.filter(r=>!includedPaths.has(r.path)).map(r=>r.path);
+     const focusedManifest=`FOCUSED AUDIT MANIFEST
+ Audit type: ${spec.name}
+ Project files: ${records.length}
+ Focused evidence records: ${relevant.length}
+ Source files represented: ${includedPaths.size}
+ Relevant records not represented as source: ${Math.max(0,relevant.length-includedPaths.size)}
++Critical-spine records identified: ${essential.length}
++Critical-spine records represented: ${essential.length-missingEssential.length}
++Critical-spine records missing: ${missingEssential.length ? missingEssential.join(', ') : 'NONE'}
+ Complete inventory included: YES
+ Binary raw payload included: NO`;
+@@ -1194,7 +1317,7 @@
+       sourceSections.pop();
+       includedPaths.clear();
+       for(const section of sourceSections) { const m=section.match(/^PATH: ([^\n]+)/mu); if(m) includedPaths.add(m[1]); }
+-      omission=boundedLines(focusedOmittedText(records,relevant,[...includedPaths],options),quota(.11),'omission-ledger');
++      omission=boundedLines(focusedOmittedText(records,relevant,[...includedPaths],options),quota(.055),'omission-ledger');
+       body=[...baseSections.slice(0,2),focusedManifest,...baseSections.slice(2),`OMITTED / REFERENCE-ONLY FILES\n${omission}`,`SELECTED SOURCE CODE\n${sourceSections.length?sourceSections.join('\n\n'):'No source segment fitted the configured hard token budget.'}`].join('\n\n============================================================\n\n');
+       estimated=estimateTokens(body);
+     }
++    const finalMissingEssential=essential.filter(r=>!includedPaths.has(r.path)).map(r=>r.path);
+     const header=`============================================================
+ LLM FOCUSED AUDIT PACK
+ 
+@@ -1209,6 +1332,8 @@
+ PROJECT FILE COUNT: ${records.length}
+ FOCUSED EVIDENCE FILE COUNT: ${relevant.length}
+ SOURCE FILES REPRESENTED: ${includedPaths.size}
++CRITICAL-SPINE FILES IDENTIFIED: ${essential.length}
++CRITICAL-SPINE FILES MISSING: ${finalMissingEssential.length}
+ GENERATOR: Code Dump Audit Pack ${GENERATOR_VERSION}
+ ============================================================
+ 
+@@ -1216,7 +1341,7 @@
+     let text=header.replace('__ESTIMATED__',String(estimateTokens(header)+estimateTokens(body)))+body;
+     estimated=estimateTokens(text);
+     text=text.replace(/ESTIMATED PACK TOKENS: \d+/u,`ESTIMATED PACK TOKENS: ${estimated}`);
+-    return {auditType:spec.id,filename:spec.filename,name:spec.name,text,estimatedTokens:estimateTokens(text),includedPaths:[...includedPaths].sort(),relevantPaths:relevant.map(r=>r.path),sourceSectionCount:sourceSections.length};
++    return {auditType:spec.id,filename:spec.filename,name:spec.name,text,estimatedTokens:estimateTokens(text),includedPaths:[...includedPaths].sort(),relevantPaths:relevant.map(r=>r.path),sourceSectionCount:sourceSections.length,criticalSpinePaths:essential.map(r=>r.path),missingCriticalSpinePaths:finalMissingEssential};
+   }
+ 
+   function validateFocusedAudit(context, pack, spec) {
+@@ -1231,6 +1356,7 @@
+     const auditable=context.records.filter(r=>!r.binary && r.contentAvailable && !r.excludedReason && !r.duplicateOf);
+     if(auditable.length && pack.includedPaths.length===0) errors.push('Focused audit contains zero source files despite available auditable text/code records.');
+     if(spec.id==='e2e' && !pack.text.includes('NO FEATURE MAY BE MARKED PASS MERELY BECAUSE IMPLEMENTATION CODE EXISTS.')) errors.push('End-to-end audit lacks the mandatory no-code-presence-pass rule.');
++    if(spec.id==='e2e' && Array.isArray(pack.missingCriticalSpinePaths) && pack.missingCriticalSpinePaths.length) errors.push(`End-to-end audit omitted critical workflow-spine source: ${pack.missingCriticalSpinePaths.join(', ')}`);
+     if(spec.id==='release' && !pack.text.includes('Unsigned or debug-signed artefacts')) errors.push('Release audit lacks explicit signing-state semantics.');
+     if(spec.id==='uiux' && !pack.text.includes('phone user experiences it')) errors.push('UI/UX audit lacks explicit mobile-user acceptance semantics.');
+     if(spec.id==='security' && !pack.text.includes('Never reproduce secrets')) errors.push('Security audit lacks secret non-disclosure rule.');
+@@ -1259,6 +1385,8 @@
+       estimatedTokens:pack.estimatedTokens,
+       includedPaths:pack.includedPaths,
+       relevantPaths:pack.relevantPaths,
++      criticalSpinePaths:pack.criticalSpinePaths||[],
++      missingCriticalSpinePaths:pack.missingCriticalSpinePaths||[],
+       settings:{targetContextTokens:context.options.targetContextTokens,maxPackTokens:context.options.maxPackTokens,reservedTokens:context.options.reservedTokens,includeTests:context.options.includeTests,includeDocs:context.options.includeDocs,includeDependencyMetadata:context.options.includeDependencyMetadata,binaryMetadata:context.options.includeBinaryMetadata,duplicateDetection:context.options.duplicateDetection},
+       fileCount:context.records.length,
+       completeFileInventory:context.records.map(recordManifest),
