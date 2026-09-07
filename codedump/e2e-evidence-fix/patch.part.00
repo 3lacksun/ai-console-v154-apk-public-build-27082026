@@ -1,0 +1,97 @@
+--- audit-pack.js
++++ audit-pack.js
+@@ -8,7 +8,7 @@
+ 
+   if (!Core) throw new Error('CodeDumpCore is required before CodeDumpAuditPack.');
+ 
+-  const GENERATOR_VERSION = '1.1.0';
++  const GENERATOR_VERSION = '1.1.1';
+   const DEFAULT_OPTIONS = Object.freeze({
+     targetContextTokens: 128000,
+     maxPackTokens: 95000,
+@@ -1097,10 +1097,103 @@
+ Do not rewrite or redesign the application unless explicitly asked to remediate it.`;
+   }
+ 
+-  function focusedCandidateSegments(records, spec, relevant) {
++
++  function focusedWorkflowBucket(record) {
++    const p=String(record.path||'').toLowerCase();
++    const c=String(record.content||'').slice(0,120000).toLowerCase();
++    const role=roleForRecord(record);
++    if(TEST_PATH_RE.test(record.path)) return 'TEST';
++    if(CONFIG_PATH_RE.test(record.path)) return 'CONFIG';
++    if(/(?:service[-_.]?worker|(?:^|\/)sw\.(?:js|ts)$|worker\.(?:js|ts)$|native|bridge|capacitor|cordova)/u.test(p) || /serviceworker|navigator\.serviceworker|postmessage\(/u.test(c)) return 'RUNTIME';
++    if(role==='UI' || /(?:^|\/)(?:app|main|index|client|frontend)\.(?:js|ts|jsx|tsx|vue|svelte)$/u.test(p) || /addeventlistener\(|document\.queryselector|document\.getelementbyid|reactdom|createapp\(/u.test(c)) return 'UI';
++    if(role==='API' || (record.routes||[]).length || /(?:@app\.route|@router\.|fastapi|flask|express\(|router\.(?:get|post|put|patch|delete)|request\.(?:json|form|files))/u.test(c)) return 'API';
++    if(role==='DATA' || /(?:sqlite|indexeddb|localstorage|repository|database|migration|create table|insert into|update\s+\w+\s+set)/u.test(c)) return 'DATA';
++    if(role==='BACKEND' || /(?:runtime|orchestrat|provider|engine|workflow|manager|service|usecase|use-case|_provider_request)/u.test(p+' '+c.slice(0,24000))) return 'BACKEND';
++    return 'SUPPORT';
++  }
++
++  function focusedBridgeCriticality(record, spec) {
++    const p=String(record.path||'').toLowerCase();
++    const c=String(record.content||'').slice(0,90000).toLowerCase();
++    let score=0;
++    if(record.explicitlyIncluded) score+=16;
++    if(record.sharedCore) score+=12;
++    if(ENTRY_PATH_RE.test(record.path)) score+=10;
++    if(CONFIG_PATH_RE.test(record.path)) score+=4;
++    score+=Math.min(8,((record.dependencies||[]).length+(record.referencedBy||[]).length)*.45);
++    score+=Math.min(5,(record.routes||[]).length*.5);
++    const bucket=focusedWorkflowBucket(record);
++    if(spec.id==='e2e') {
++      if(['UI','API','BACKEND','DATA','RUNTIME'].includes(bucket)) score+=7;
++      if(/(?:^|\/)(?:app|main|index|client|frontend)\.(?:js|ts|jsx|tsx|py|php|rb|go|java|kt|swift)$/u.test(p)) score+=12;
++      if(/(?:service[-_.]?worker|(?:^|\/)sw\.(?:js|ts)$)/u.test(p)) score+=14;
++      if(/(?:runtime|orchestrat|workspace[_-]?core|app[_-]?core|core|router|routes|controller|provider|store|state|repository|database|storage)/u.test(p)) score+=9;
++      if(/addeventlistener\(|onclick|onsubmit|fetch\(|axios\.|xmlhttprequest|websocket|eventsource|navigator\.serviceworker/u.test(c)) score+=8;
++      if(/@app\.route|@router\.|router\.(?:get|post|put|patch|delete)|request\.(?:json|form|files)/u.test(c)) score+=7;
++      if(/sqlite|indexeddb|localstorage|sessionstorage|create table|insert into|update\s+\w+\s+set/u.test(c)) score+=5;
++      if(/provider|orchestrat|stream|retry|cancel|abortcontroller|offline|sync/u.test(c)) score+=4;
++    }
++    return score;
++  }
++
++  function focusedChunkSignalScore(chunk, record, spec) {
++    const t=String(chunk.text||'').toLowerCase();
++    let score=Math.min(3,estimateTokens(chunk.text)/3500);
++    if(spec.id==='e2e') {
++      const pats=[
++        [/(?:addeventlistener|onclick|onsubmit|onchange|queryselector|getelementbyid|createelement|render|setstate|dispatch)/u,4],
++        [/(?:fetch\(|axios\.|xmlhttprequest|websocket|eventsource|\/api\/|request\.(?:json|form|files))/u,4],
++        [/(?:@app\.route|@router\.|router\.(?:get|post|put|patch|delete)|def\s+\w+|async\s+function|function\s+\w+)/u,3],
++        [/(?:sqlite|indexeddb|localstorage|sessionstorage|insert into|update\s+\w+\s+set|commit\(|repository|database)/u,3],
++        [/(?:serviceworker|caches\.|cache\.|offline|sync|postmessage|background|resume|restart)/u,3],
++        [/(?:provider|orchestrat|stream|retry|cancel|abortcontroller|timeout|error|catch\s*\()/u,2.5],
++        [/(?:upload|download|import|export|file|folder|permission|deeplink|deep link)/u,2]
++      ];
++      for(const [re,w] of pats) if(re.test(t)) score+=w;
++    } else if(spec.id==='uiux') {
++      if(/(?:media|viewport|safe-area|keyboard|focus|aria-|dialog|modal|sheet|nav|overflow|scroll|touch|pointer)/u.test(t)) score+=4;
++    } else if(spec.id==='security') {
++      if(/(?:auth|token|secret|csrf|cors|encrypt|decrypt|hash|sanitize|validate|permission|upload|path|tls|https)/u.test(t)) score+=4;
++    } else if(spec.id==='release') {
++      if(/(?:gradle|manifest|version|build|release|sign|workflow|docker|deploy|migration|test|lint|bundle|apk|aab)/u.test(t)) score+=4;
++    }
++    return score;
++  }
++
++  function focusedEssentialRecords(records, spec, relevant) {
++    if(spec.id!=='e2e') return [];
++    const eligible=relevant.filter(r=>!r.binary && r.contentAvailable && !r.excludedReason && !r.duplicateOf);
++    const byBucket=new Map();
++    for(const r of eligible) {
++      const bucket=focusedWorkflowBucket(r);
++      if(!byBucket.has(bucket)) byBucket.set(bucket,[]);
++      byBucket.get(bucket).push(r);
++    }
++    for(const arr of byBucket.values()) arr.sort((a,b)=>focusedBridgeCriticality(b,spec)-focusedBridgeCriticality(a,spec) || a.path.localeCompare(b.path));
++    const selected=new Map();
++    // Guarantee at least one source record from each major end-to-end layer when present.
++    for(const bucket of ['UI','API','BACKEND','DATA','RUNTIME']) {
++      const arr=byBucket.get(bucket)||[];
++      if(arr[0]) selected.set(arr[0].path,arr[0]);
++      if(arr[1] && focusedBridgeCriticality(arr[1],spec)>=14) selected.set(arr[1].path,arr[1]);
++    }
++    
