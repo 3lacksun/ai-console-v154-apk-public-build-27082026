@@ -1,0 +1,55 @@
+name: Reacrstock Stage 5 generic React toolchain
+
+on:
+  push:
+    branches:
+      - reacrstock-stage5-public-build-20260909
+    paths:
+      - '.stage5-react-toolchain/**'
+      - '.github/workflows/reacrstock-stage5-generic-toolchain.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  toolchain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: .stage5-react-toolchain
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Generate lockfile
+        run: npm install --package-lock-only --no-audit --no-fund
+      - name: Clean install
+        run: npm ci --no-audit --no-fund
+      - name: Verify exact packages
+        run: |
+          node - <<'NODE'
+          const react = require('./node_modules/react/package.json');
+          const dom = require('./node_modules/react-dom/package.json');
+          const scheduler = require('./node_modules/scheduler/package.json');
+          const esbuild = require('./node_modules/esbuild/package.json');
+          if (react.version !== '19.2.8') throw new Error(`React ${react.version}`);
+          if (dom.version !== '19.2.8') throw new Error(`ReactDOM ${dom.version}`);
+          if (scheduler.version !== '0.27.0') throw new Error(`Scheduler ${scheduler.version}`);
+          if (esbuild.version !== '0.28.2') throw new Error(`esbuild ${esbuild.version}`);
+          NODE
+          mkdir -p out
+          cp package.json package-lock.json out/
+          sha256sum package.json package-lock.json > out/MANIFEST-HASHES.sha256
+          tar -czf out/node-toolchain.tar.gz node_modules
+          sha256sum out/node-toolchain.tar.gz >> out/MANIFEST-HASHES.sha256
+      - name: Upload generic toolchain
+        uses: actions/upload-artifact@v4
+        with:
+          name: reacrstock-stage5-generic-react-toolchain
+          path: .stage5-react-toolchain/out/
+          if-no-files-found: error
+          retention-days: 7
