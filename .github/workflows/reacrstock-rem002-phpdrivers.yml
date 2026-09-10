@@ -1,0 +1,36 @@
+name: Reacrstock REM002 generic PHP PDO drivers
+
+on:
+  push:
+    branches:
+      - reacrstock-rem002-phpdrivers-20260910
+    paths:
+      - '.github/workflows/reacrstock-rem002-phpdrivers.yml'
+      - '.reacrstock-rem002-phpdrivers-trigger'
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Download Debian PHP 8.4 PDO driver packages
+        run: |
+          set -euxo pipefail
+          mkdir -p out
+          cd out
+          sudo apt-get update
+          apt-get download php8.4-sqlite3 php8.4-mysql
+          sha256sum *.deb > SHA256SUMS
+          for f in *.deb; do dpkg-deb -I "$f" > "$f.control.txt"; done
+      - name: Upload generic driver artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: reacrstock-rem002-php84-pdo-drivers
+          path: out/
+          if-no-files-found: error
+          retention-days: 7
