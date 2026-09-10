@@ -18,13 +18,16 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      - name: Download Debian PHP 8.4 PDO driver packages
+      - name: Download exact Debian 13 PHP 8.4 PDO driver packages
         run: |
           set -euxo pipefail
           mkdir -p out
           cd out
-          sudo apt-get update
-          apt-get download php8.4-sqlite3 php8.4-mysql
+          curl -fL 'https://security.debian.org/debian-security/pool/updates/main/p/php8.4/php8.4-sqlite3_8.4.24-1~deb13u1_amd64.deb' -o php8.4-sqlite3_8.4.24-1~deb13u1_amd64.deb
+          curl -fL 'https://security.debian.org/debian-security/pool/updates/main/p/php8.4/php8.4-mysql_8.4.24-1~deb13u1_amd64.deb' -o php8.4-mysql_8.4.24-1~deb13u1_amd64.deb
+          echo 'f2166ad88645a238d132269bcf197ac06d27f08777bd312054173ad0b8d061b8  php8.4-sqlite3_8.4.24-1~deb13u1_amd64.deb' > EXPECTED-SHA256SUMS
+          echo '3f1a0ac997517db19f086342617a9c0f2ac73093bc93b51f9faf0f8f9c55de63  php8.4-mysql_8.4.24-1~deb13u1_amd64.deb' >> EXPECTED-SHA256SUMS
+          sha256sum -c EXPECTED-SHA256SUMS
           sha256sum *.deb > SHA256SUMS
           for f in *.deb; do dpkg-deb -I "$f" > "$f.control.txt"; done
       - name: Upload generic driver artifact
