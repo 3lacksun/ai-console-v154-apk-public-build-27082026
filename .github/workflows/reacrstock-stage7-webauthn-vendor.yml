@@ -5,7 +5,7 @@ on:
     branches:
       - reacrstock-stage7-webauthn-vendor-20260911
     paths:
-      - 'reacrstock-webauthn/composer.json'
+      - 'reacrstock-webauthn/**'
       - '.github/workflows/reacrstock-stage7-webauthn-vendor.yml'
 
 permissions:
@@ -25,6 +25,10 @@ jobs:
           extensions: json, openssl, sodium
           tools: composer:v2
           coverage: none
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
       - name: Build generic WebAuthn runtime
         working-directory: reacrstock-webauthn
         run: |
@@ -36,6 +40,22 @@ jobs:
           php -r "require 'vendor/autoload.php'; echo class_exists('Webauthn\\PublicKeyCredentialCreationOptions') ? 'WebAuthn autoload OK\n' : exit(1);"
           sha256sum composer.json composer.lock > MANIFEST-HASHES.sha256
           find vendor -type f -print0 | sort -z | xargs -0 sha256sum > VENDOR-HASHES.sha256
+      - name: Run real Chromium WebAuthn ceremony
+        working-directory: reacrstock-webauthn
+        run: |
+          set -euxo pipefail
+          npm install --no-save --no-package-lock playwright-core@1.55.0
+          google-chrome --version
+          php -S 127.0.0.1:18779 ceremony-server.php > /tmp/webauthn-server.log 2>&1 &
+          SERVER_PID=$!
+          trap 'kill $SERVER_PID 2>/dev/null || true' EXIT
+          for i in $(seq 1 50); do
+            if curl -fsS http://127.0.0.1:18779/ >/dev/null; then break; fi
+            sleep 0.1
+          done
+          node ceremony-test.mjs
+          kill $SERVER_PID
+          trap - EXIT
       - name: Upload generic WebAuthn runtime
         uses: actions/upload-artifact@v4
         with:
