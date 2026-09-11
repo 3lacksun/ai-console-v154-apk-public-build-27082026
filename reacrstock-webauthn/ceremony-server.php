@@ -56,8 +56,8 @@ $origin='http://127.0.0.1:18779'; $wa=new GenericWebAuthn('127.0.0.1',$origin); 
 header('Content-Type: application/json');
 try {
   if($a==='reg-options'){ $h=random_bytes(32); saveState('handle',b64e($h)); $o=$wa->registrationOptions($h); saveState('reg-options',$o); echo json_encode(['publicKey'=>$o]); exit; }
-  if($a==='reg-verify'){ $h=base64_decode(strtr(loadState('handle').str_repeat('=',(4-strlen(loadState('handle'))%4)%4),'-_','+/')); $r=$wa->verifyRegistration(body()['credential']??[],loadState('reg-options'),$h); saveState('record',$r); echo json_encode(['ok'=>true]); exit; }
+  if($a==='reg-verify'){ $hb=loadState('handle'); $h=base64_decode(strtr($hb.str_repeat('=',(4-strlen($hb)%4)%4),'-_','+/')); $r=$wa->verifyRegistration(body()['credential']??[],loadState('reg-options'),$h); saveState('record',$r); echo json_encode(['ok'=>true]); exit; }
   if($a==='auth-options'){ $o=$wa->authenticationOptions(); saveState('auth-options',$o); echo json_encode(['publicKey'=>$o]); exit; }
-  if($a==='auth-verify'){ $hb=loadState('handle'); $h=base64_decode(strtr($hb.str_repeat('=',(4-strlen($hb)%4)%4),'-_','+/')); $r=$wa->verifyAuthentication(body()['credential']??[],loadState('auth-options'),(string)file_get_contents(statePath('record')),$h); saveState('record',$r); echo json_encode(['ok'=>true]); exit; }
+  if($a==='auth-verify'){ $hb=loadState('handle'); $h=base64_decode(strtr($hb.str_repeat('=',(4-strlen($hb)%4)%4),'-_','+/')); $r=$wa->verifyAuthentication(body()['credential']??[],loadState('auth-options'),(string)loadState('record'),$h); saveState('record',$r); echo json_encode(['ok'=>true]); exit; }
   echo json_encode(['ok'=>true,'service'=>'generic-webauthn-ceremony']);
 } catch(Throwable $e){ http_response_code(401); echo json_encode(['ok'=>false,'error'=>$e->getMessage()]); }
