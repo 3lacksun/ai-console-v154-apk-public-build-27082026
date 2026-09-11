@@ -1,0 +1,51 @@
+name: Reacrstock Stage 7 generic WebAuthn vendor
+
+on:
+  push:
+    branches:
+      - reacrstock-stage7-webauthn-vendor-20260911
+    paths:
+      - 'reacrstock-webauthn/composer.json'
+      - '.github/workflows/reacrstock-stage7-webauthn-vendor.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup PHP 8.4
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: json, openssl, sodium
+          tools: composer:v2
+          coverage: none
+      - name: Build generic WebAuthn runtime
+        working-directory: reacrstock-webauthn
+        run: |
+          set -euxo pipefail
+          composer install --no-dev --prefer-dist --no-interaction --no-progress --optimize-autoloader
+          composer validate --strict
+          composer audit --no-dev
+          composer show --locked --no-dev > PACKAGE-LIST.txt
+          php -r "require 'vendor/autoload.php'; echo class_exists('Webauthn\\PublicKeyCredentialCreationOptions') ? 'WebAuthn autoload OK\n' : exit(1);"
+          sha256sum composer.json composer.lock > MANIFEST-HASHES.sha256
+          find vendor -type f -print0 | sort -z | xargs -0 sha256sum > VENDOR-HASHES.sha256
+      - name: Upload generic WebAuthn runtime
+        uses: actions/upload-artifact@v4
+        with:
+          name: reacrstock-stage7-webauthn-runtime
+          path: |
+            reacrstock-webauthn/composer.json
+            reacrstock-webauthn/composer.lock
+            reacrstock-webauthn/PACKAGE-LIST.txt
+            reacrstock-webauthn/MANIFEST-HASHES.sha256
+            reacrstock-webauthn/VENDOR-HASHES.sha256
+            reacrstock-webauthn/vendor/
+          if-no-files-found: error
+          retention-days: 7
