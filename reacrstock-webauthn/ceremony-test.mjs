@@ -1,0 +1,34 @@
+import { chromium } from 'playwright-core';
+const base='http://127.0.0.1:18779';
+const b64d=s=>{s=s.replace(/-/g,'+').replace(/_/g,'/');while(s.length%4)s+='=';return Uint8Array.from(Buffer.from(s,'base64'));};
+const b64e=a=>Buffer.from(new Uint8Array(a)).toString('base64url');
+const browser=await chromium.launch({executablePath:'/usr/bin/google-chrome',headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
+const context=await browser.newContext();
+const page=await context.newPage();
+await page.goto(base,{waitUntil:'domcontentloaded'});
+const cdp=await context.newCDPSession(page);
+await cdp.send('WebAuthn.enable');
+const va=await cdp.send('WebAuthn.addVirtualAuthenticator',{options:{protocol:'ctap2',transport:'internal',hasResidentKey:true,hasUserVerification:true,isUserVerified:true,automaticPresenceSimulation:true}});
+if(!va.authenticatorId) throw new Error('virtual authenticator missing');
+const reg=await page.evaluate(async()=>{
+  const b64d=s=>{s=s.replace(/-/g,'+').replace(/_/g,'/');while(s.length%4)s+='=';const b=atob(s);return Uint8Array.from(b,c=>c.charCodeAt(0));};
+  const b64e=a=>{let s='';for(const b of new Uint8Array(a))s+=String.fromCharCode(b);return btoa(s).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');};
+  const o=await (await fetch('?action=reg-options')).json(); let p=o.publicKey; p.challenge=b64d(p.challenge); p.user.id=b64d(p.user.id); p.excludeCredentials=(p.excludeCredentials||[]).map(c=>({...c,id:b64d(c.id)}));
+  const cr=await navigator.credentials.create({publicKey:p}); const r=cr.response;
+  const payload={id:cr.id,rawId:b64e(cr.rawId),type:cr.type,response:{clientDataJSON:b64e(r.clientDataJSON),attestationObject:b64e(r.attestationObject),transports:r.getTransports?r.getTransports():[]},clientExtensionResults:cr.getClientExtensionResults?cr.getClientExtensionResults():{}};
+  const vr=await fetch('?action=reg-verify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({credential:payload})}); return {status:vr.status,json:await vr.json()};
+});
+if(reg.status!==200||!reg.json.ok) throw new Error('registration verify failed '+JSON.stringify(reg));
+console.log('PASS real browser WebAuthn registration');
+const auth=await page.evaluate(async()=>{
+  const b64d=s=>{s=s.replace(/-/g,'+').replace(/_/g,'/');while(s.length%4)s+='=';const b=atob(s);return Uint8Array.from(b,c=>c.charCodeAt(0));};
+  const b64e=a=>{if(!a)return null;let s='';for(const b of new Uint8Array(a))s+=String.fromCharCode(b);return btoa(s).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');};
+  const o=await (await fetch('?action=auth-options')).json(); let p=o.publicKey; p.challenge=b64d(p.challenge); p.allowCredentials=(p.allowCredentials||[]).map(c=>({...c,id:b64d(c.id)}));
+  const cr=await navigator.credentials.get({publicKey:p}); const r=cr.response;
+  const payload={id:cr.id,rawId:b64e(cr.rawId),type:cr.type,response:{clientDataJSON:b64e(r.clientDataJSON),authenticatorData:b64e(r.authenticatorData),signature:b64e(r.signature),userHandle:b64e(r.userHandle)},clientExtensionResults:cr.getClientExtensionResults?cr.getClientExtensionResults():{}};
+  const vr=await fetch('?action=auth-verify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({credential:payload})}); return {status:vr.status,json:await vr.json()};
+});
+if(auth.status!==200||!auth.json.ok) throw new Error('authentication verify failed '+JSON.stringify(auth));
+console.log('PASS real browser discoverable WebAuthn authentication');
+await browser.close();
+console.log('ALL GENERIC REAL WEBAUTHN CEREMONY TESTS PASSED');
