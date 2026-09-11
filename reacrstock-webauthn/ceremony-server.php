@@ -52,7 +52,7 @@ function statePath(string $n): string { return sys_get_temp_dir().'/generic-weba
 function saveState(string $n,mixed $v): void { file_put_contents(statePath($n),json_encode($v,JSON_THROW_ON_ERROR)); }
 function loadState(string $n): mixed { return json_decode((string)file_get_contents(statePath($n)),true,512,JSON_THROW_ON_ERROR); }
 function body(): array { $x=json_decode((string)file_get_contents('php://input'),true); return is_array($x)?$x:[]; }
-$origin='http://127.0.0.1:18779'; $wa=new GenericWebAuthn('127.0.0.1',$origin); $a=$_GET['action']??'';
+$origin='http://localhost:18779'; $wa=new GenericWebAuthn('localhost',$origin); $a=$_GET['action']??'';
 header('Content-Type: application/json');
 try {
   if($a==='reg-options'){ $h=random_bytes(32); saveState('handle',b64e($h)); $o=$wa->registrationOptions($h); saveState('reg-options',$o); echo json_encode(['publicKey'=>$o]); exit; }
