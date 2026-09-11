@@ -1,7 +1,5 @@
 import { chromium } from 'playwright-core';
-const base='http://127.0.0.1:18779';
-const b64d=s=>{s=s.replace(/-/g,'+').replace(/_/g,'/');while(s.length%4)s+='=';return Uint8Array.from(Buffer.from(s,'base64'));};
-const b64e=a=>Buffer.from(new Uint8Array(a)).toString('base64url');
+const base='http://localhost:18779';
 const browser=await chromium.launch({executablePath:'/usr/bin/google-chrome',headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
 const context=await browser.newContext();
 const page=await context.newPage();
