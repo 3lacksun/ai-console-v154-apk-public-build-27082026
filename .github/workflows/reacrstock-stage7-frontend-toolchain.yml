@@ -1,0 +1,45 @@
+name: Reacrstock Stage 7 generic frontend toolchain
+
+on:
+  push:
+    branches:
+      - reacrstock-stage7-frontend-toolchain-20260911
+    paths:
+      - 'reacrstock-stage7-frontend/package.json'
+      - '.github/workflows/reacrstock-stage7-frontend-toolchain.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Build generic toolchain
+        working-directory: reacrstock-stage7-frontend
+        run: |
+          set -euxo pipefail
+          npm install --package-lock-only --ignore-scripts
+          npm ci --ignore-scripts
+          npm audit --omit=dev
+          node -e "console.log(require('react/package.json').version, require('react-dom/package.json').version, require('qrcode/package.json').version, require('esbuild/package.json').version)"
+          sha256sum package.json package-lock.json > MANIFEST-HASHES.sha256
+          tar -czf node-toolchain.tar.gz node_modules
+      - name: Upload generic frontend toolchain
+        uses: actions/upload-artifact@v4
+        with:
+          name: reacrstock-stage7-frontend-toolchain
+          path: |
+            reacrstock-stage7-frontend/package.json
+            reacrstock-stage7-frontend/package-lock.json
+            reacrstock-stage7-frontend/MANIFEST-HASHES.sha256
+            reacrstock-stage7-frontend/node-toolchain.tar.gz
+          if-no-files-found: error
+          retention-days: 7
