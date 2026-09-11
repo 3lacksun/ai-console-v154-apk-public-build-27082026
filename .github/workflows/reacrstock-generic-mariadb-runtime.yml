@@ -31,7 +31,7 @@ jobs:
           sudo cp -a /usr/lib/mysql/plugin/. mariadb-runtime/plugin/
           sudo chown -R "$(id -u):$(id -g)" mariadb-runtime/plugin
           cp -a /usr/share/mysql/. mariadb-runtime/share/
-          for exe in /usr/sbin/mariadbd /usr/bin/mariadb-install-db /usr/bin/mariadb; do
+          for exe in /usr/sbin/mariadbd /usr/bin/mariadb; do
             ldd "$exe" | awk '/=> \/|^\// {for(i=1;i<=NF;i++) if($i ~ /^\//) print $i}'
           done | sort -u > mariadb-libs.txt
           while IFS= read -r lib; do cp -L "$lib" mariadb-runtime/lib/; done < mariadb-libs.txt
