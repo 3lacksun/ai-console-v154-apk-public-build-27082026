@@ -1,0 +1,15 @@
+{
+  "name": "reacrstock/webauthn-runtime",
+  "description": "Generic vendored WebAuthn runtime for Reacrstock shared-hosting deployment",
+  "type": "project",
+  "require": {
+    "php": ">=8.4",
+    "web-auth/webauthn-lib": "5.3.8"
+  },
+  "config": {
+    "sort-packages": true,
+    "optimize-autoloader": true,
+    "classmap-authoritative": true,
+    "allow-plugins": {}
+  }
+}
