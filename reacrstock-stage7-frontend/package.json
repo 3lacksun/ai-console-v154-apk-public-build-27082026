@@ -1,0 +1,14 @@
+{
+  "name": "reacrstock-stage7-generic-frontend-toolchain",
+  "private": true,
+  "version": "7.0.0",
+  "type": "module",
+  "dependencies": {
+    "qrcode": "1.5.4",
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2"
+  }
+}
