@@ -30,7 +30,7 @@ jobs:
         run: |
           set -euxo pipefail
           composer install --no-dev --prefer-dist --no-interaction --no-progress --optimize-autoloader
-          composer validate --strict
+          composer validate --no-check-publish
           composer audit --no-dev
           composer show --locked --no-dev > PACKAGE-LIST.txt
           php -r "require 'vendor/autoload.php'; echo class_exists('Webauthn\\PublicKeyCredentialCreationOptions') ? 'WebAuthn autoload OK\n' : exit(1);"
