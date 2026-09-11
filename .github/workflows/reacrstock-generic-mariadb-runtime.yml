@@ -1,0 +1,48 @@
+name: Reacrstock generic MariaDB runtime
+
+on:
+  push:
+    branches: [ reacrstock-generic-mariadb-runtime-20260911 ]
+    paths:
+      - .github/workflows/reacrstock-generic-mariadb-runtime.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build generic MariaDB runtime artifact
+        shell: bash
+        run: |
+          set -euxo pipefail
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y mariadb-server
+          mariadbd --version | tee mariadb-version.txt
+          rm -rf mariadb-runtime
+          mkdir -p mariadb-runtime/bin mariadb-runtime/lib mariadb-runtime/plugin mariadb-runtime/share mariadb-runtime/datadir
+          cp /usr/sbin/mariadbd mariadb-runtime/bin/
+          cp /usr/bin/mariadb-install-db mariadb-runtime/bin/
+          cp /usr/bin/mariadb mariadb-runtime/bin/
+          cp -a /usr/lib/mysql/plugin/. mariadb-runtime/plugin/
+          cp -a /usr/share/mysql/. mariadb-runtime/share/
+          for exe in /usr/sbin/mariadbd /usr/bin/mariadb-install-db /usr/bin/mariadb; do
+            ldd "$exe" | awk '/=> \/|^\// {for(i=1;i<=NF;i++) if($i ~ /^\//) print $i}'
+          done | sort -u > mariadb-libs.txt
+          while IFS= read -r lib; do cp -L "$lib" mariadb-runtime/lib/; done < mariadb-libs.txt
+          mariadb-install-db --no-defaults --datadir="$PWD/mariadb-runtime/datadir" --auth-root-authentication-method=normal --skip-test-db
+          find mariadb-runtime -type f -print0 | sort -z | xargs -0 sha256sum > mariadb-runtime-hashes.sha256
+          tar -czf mariadb-runtime.tar.gz mariadb-runtime mariadb-version.txt mariadb-libs.txt mariadb-runtime-hashes.sha256
+          sha256sum mariadb-runtime.tar.gz > mariadb-runtime.tar.gz.sha256
+      - name: Upload generic MariaDB runtime
+        uses: actions/upload-artifact@v4
+        with:
+          name: reacrstock-generic-mariadb-runtime
+          path: |
+            mariadb-runtime.tar.gz
+            mariadb-runtime.tar.gz.sha256
+          retention-days: 7
