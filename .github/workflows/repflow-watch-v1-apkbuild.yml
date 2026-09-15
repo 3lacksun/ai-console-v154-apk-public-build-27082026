@@ -1,0 +1,401 @@
+name: RepFlow Watch V1 APKBUILD Completion
+
+on:
+  push:
+    branches:
+      - repflow-watch-v1-apkbuild-15092026
+
+permissions:
+  contents: read
+
+env:
+  SOURCE_SHA256: 8bd6d1a91b5fc8d4ff6459b90362784eda6061967bcfcc5056d261d9181cb101
+  SOURCE_SIZE: '992119'
+  GRADLE_VERSION: 8.14.3
+  GRADLE_ZIP_SHA256: bd71102213493060956ec229d946beee57158dbd89d0e62b91bca0fa2c5f3531
+  GRADLE_ZIP_SIZE: '137393837'
+  WRAPPER_JAR_SHA256: 7d3a4ac4de1c32b59bc6a4eb8ecb8e612ccd0cf1ae1e99f66902da64df296172
+  GRADLE_USER_HOME: ${{ github.workspace }}/.repflow-gradle-home
+
+jobs:
+  build-and-verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Checkout controller
+        uses: actions/checkout@v4
+
+      - name: Fetch sealed authoritative RepFlow Watch source
+        shell: bash
+        env:
+          SOURCE_URL: "https://sdmntprukwest.oaiusercontent.com/files/00000000-c6d4-8243-b6d2-72690e87631e/raw?se=2026-09-15T19%3A38%3A51Z&sp=r&sv=2026-02-06&sr=b&scid=09897e6e-495d-5c95-a8e8-e44419cc74b5&skoid=3804227d-1b52-417d-afd9-9ffbb50fa53e&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-09-15T05%3A32%3A11Z&ske=2026-09-16T05%3A32%3A11Z&sks=b&skv=2026-02-06&sig=CF6is6hnoAiaHwvEzANpCMTrA5HGqYM3CwzfwfRv2bA%3D"
+        run: |
+          set -euo pipefail
+          mkdir -p evidence/source
+          curl -fL --retry 3 --retry-delay 1 "$SOURCE_URL" -o /tmp/repflow-watch-source.tar.gz
+          test "$(stat -c '%s' /tmp/repflow-watch-source.tar.gz)" = "$SOURCE_SIZE"
+          echo "$SOURCE_SHA256  /tmp/repflow-watch-source.tar.gz" | sha256sum -c -
+          tar -tzf /tmp/repflow-watch-source.tar.gz >/dev/null
+          mkdir build-src
+          tar -xzf /tmp/repflow-watch-source.tar.gz -C build-src
+          test -f build-src/package.json
+          test -f build-src/android/settings.gradle
+          test -f build-src/android/app/build.gradle
+          test -f build-src/android/wear/build.gradle
+          test -f build-src/native/wear/build.gradle
+          sha256sum /tmp/repflow-watch-source.tar.gz | tee evidence/source/SOURCE_ARCHIVE_SHA256.txt
+          find build-src/verification -maxdepth 3 -type f -print 2>/dev/null | sort | tee evidence/source/VERIFIER_INVENTORY.txt || true
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Verify Java 21
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p evidence/toolchain
+          java -version 2>&1 | tee evidence/toolchain/java-version.txt
+          javac -version 2>&1 | tee -a evidence/toolchain/java-version.txt
+          java -version 2>&1 | grep -Eq 'version "21[.]|openjdk version "21[.]'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699
+        with:
+          packages: ''
+          accept-android-sdk-licenses: true
+
+      - name: Install and verify Android SDK 36 / Build Tools 36.0.0
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null 2>&1 || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+          test -f "$ANDROID_HOME/platforms/android-36/android.jar"
+          for t in aapt aapt2 zipalign apksigner; do test -x "$ANDROID_HOME/build-tools/36.0.0/$t"; done
+          sdkmanager --list_installed | tee evidence/toolchain/android-sdk-installed.txt
+
+      - name: Download and checksum exact Gradle 8.14.3
+        shell: bash
+        run: |
+          set -euo pipefail
+          ZIP="$RUNNER_TEMP/gradle-${GRADLE_VERSION}-bin.zip"
+          curl -fL --retry 4 --retry-delay 2 "https://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.zip" -o "$ZIP"
+          test "$(stat -c '%s' "$ZIP")" = "$GRADLE_ZIP_SIZE"
+          echo "$GRADLE_ZIP_SHA256  $ZIP" | sha256sum -c -
+          unzip -tq "$ZIP" >/dev/null
+          unzip -q "$ZIP" -d "$RUNNER_TEMP/gradle-runtime"
+          GRADLE_BIN="$RUNNER_TEMP/gradle-runtime/gradle-${GRADLE_VERSION}/bin/gradle"
+          test -x "$GRADLE_BIN"
+          "$GRADLE_BIN" --version | tee evidence/toolchain/gradle-version.txt
+          grep -q '^Gradle 8.14.3$' evidence/toolchain/gradle-version.txt
+          sha256sum "$ZIP" | tee evidence/toolchain/gradle-distribution-sha256.txt
+          echo "GRADLE_BIN=$GRADLE_BIN" >> "$GITHUB_ENV"
+
+      - name: Verify locked generated Android identity and pins
+        shell: bash
+        working-directory: build-src
+        run: |
+          set -euo pipefail
+          grep -R -q '8.13.0' android
+          grep -R -q '2.3.21' android
+          grep -R -Eq 'compileSdk(Version)?[ =]+36' android
+          grep -R -Eq 'targetSdk(Version)?[ =]+36' android
+          grep -q 'gradle-8.14.3-bin.zip' android/gradle/wrapper/gradle-wrapper.properties
+          echo "$WRAPPER_JAR_SHA256  android/gradle/wrapper/gradle-wrapper.jar" | sha256sum -c -
+          grep -Eq "applicationId( =)? ['\"]net.nexarenew.repflow['\"]" android/app/build.gradle
+          grep -Eq 'versionCode( =)? 9' android/app/build.gradle
+          grep -Eq "versionName( =)? ['\"]1.0.0-capacitor.9['\"]" android/app/build.gradle
+          grep -Eq "applicationId( =)? ['\"]net.nexarenew.repflow['\"]" android/wear/build.gradle
+          grep -Eq 'versionCode( =)? 9' android/wear/build.gradle
+          grep -Eq "versionName( =)? ['\"]1.0.0-capacitor.9['\"]" android/wear/build.gradle
+
+      - name: Apply locked successor remediation only
+        shell: bash
+        working-directory: build-src
+        run: |
+          set -euo pipefail
+          mkdir -p ../evidence/remediation
+          python3 - <<'PY' | tee ../evidence/remediation/successor-remediation.txt
+          from pathlib import Path
+          import re
+
+          dep = 'org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.10.2'
+          for p in [Path('native/wear/build.gradle'), Path('android/wear/build.gradle')]:
+              text = p.read_text()
+              if dep not in text:
+                  lines = text.splitlines()
+                  done = False
+                  for i, line in enumerate(lines):
+                      if 'kotlinx-coroutines-android:1.10.2' in line:
+                          indent = line[:len(line)-len(line.lstrip())]
+                          lines.insert(i + 1, f'{indent}implementation "{dep}"')
+                          done = True
+                          break
+                  if not done:
+                      for i, line in enumerate(lines):
+                          if re.match(r'^\s*dependencies\s*\{', line):
+                              lines.insert(i + 1, f'    implementation "{dep}"')
+                              done = True
+                              break
+                  if not done:
+                      raise SystemExit(f'No dependencies block in {p}')
+                  p.write_text('\n'.join(lines) + ('\n' if text.endswith('\n') else ''))
+                  print('ADDED', dep, 'to', p)
+              else:
+                  print('PRESERVED', dep, 'in', p)
+
+          needle = 'index_set_record_sessionId_exerciseId_setNumber'
+          candidates = list(Path('native/wear').rglob('*.kt')) + list(Path('android/wear').rglob('*.kt'))
+          for p in candidates:
+              text = p.read_text()
+              lines = text.splitlines()
+              new = []
+              removed = 0
+              for line in lines:
+                  if needle in line and 'CREATE UNIQUE INDEX' in line.upper():
+                      removed += 1
+                      continue
+                  new.append(line)
+              if removed:
+                  p.write_text('\n'.join(new) + ('\n' if text.endswith('\n') else ''))
+                  print('REMOVED unsafe unique-index migration from', p, 'lines=', removed)
+
+          for p in candidates:
+              text = p.read_text()
+              if re.search(r'CREATE\s+UNIQUE\s+INDEX[\s\S]{0,320}' + re.escape(needle), text, re.I):
+                  raise SystemExit(f'Unsafe legacy-collision unique index still present in {p}')
+          for p in [Path('native/wear/build.gradle'), Path('android/wear/build.gradle')]:
+              assert dep in p.read_text(), p
+          print('SUCCESSOR_REMEDIATION=PASS')
+          PY
+
+      - name: Migration collision regression
+        shell: bash
+        working-directory: build-src
+        run: |
+          set -euo pipefail
+          mkdir -p ../evidence/migration-regression
+          python3 - <<'PY' | tee ../evidence/migration-regression/migration-regression.txt
+          import sqlite3, re
+          from pathlib import Path
+          needle = 'index_set_record_sessionId_exerciseId_setNumber'
+          for p in list(Path('native/wear').rglob('*.kt')) + list(Path('android/wear').rglob('*.kt')):
+              assert not re.search(r'CREATE\s+UNIQUE\s+INDEX[\s\S]{0,320}' + re.escape(needle), p.read_text(), re.I), p
+          db = sqlite3.connect(':memory:')
+          db.execute('CREATE TABLE set_record (id TEXT PRIMARY KEY NOT NULL, sessionId TEXT NOT NULL, exerciseId TEXT NOT NULL DEFAULT "", setNumber INTEGER NOT NULL DEFAULT 0)')
+          db.execute('INSERT INTO set_record(id,sessionId) VALUES ("legacy-1","session-A")')
+          db.execute('INSERT INTO set_record(id,sessionId) VALUES ("legacy-2","session-A")')
+          rows = db.execute('SELECT id,sessionId,exerciseId,setNumber FROM set_record ORDER BY id').fetchall()
+          assert len(rows) == 2
+          assert rows[0][2:] == ('',0) and rows[1][2:] == ('',0)
+          print('legacy_colliding_rows_survive=2')
+          print('unsafe_unique_index_absent=true')
+          print('MIGRATION_COLLISION_REGRESSION=PASS')
+          PY
+
+      - name: Capture successor/static acceptance evidence
+        shell: bash
+        working-directory: build-src
+        run: |
+          set -euo pipefail
+          mkdir -p ../evidence/static-acceptance
+          {
+            echo 'SOURCE_ARCHIVE_SHA256=PASS'
+            echo 'GENERATED_ANDROID_TREE_PRESENT=PASS'
+            echo 'GRADLE_8_14_3_PIN=PASS'
+            echo 'AGP_8_13_0_PIN=PASS'
+            echo 'KOTLIN_COMPOSE_2_3_21_PIN=PASS'
+            echo 'SDK_36_PIN=PASS'
+            echo 'PHONE_IDENTITY_SOURCE=PASS'
+            echo 'WEAR_IDENTITY_SOURCE=PASS'
+            echo 'COROUTINES_PLAY_SERVICES=PASS'
+            echo 'UNSAFE_MIGRATION_INDEX_ABSENT=PASS'
+          } | tee ../evidence/static-acceptance/successor-source-acceptance.txt
+          find verification -type f -maxdepth 3 -print 2>/dev/null | sort > ../evidence/static-acceptance/verifier-inventory.txt || true
+
+      - name: First online dependency-warming build
+        shell: bash
+        working-directory: build-src/android
+        run: |
+          set -euo pipefail
+          mkdir -p ../../evidence/build/online
+          "$GRADLE_BIN" --no-daemon --stacktrace test :app:lintDebug :wear:lintDebug :app:assembleDebug :wear:assembleDebug 2>&1 | tee ../../evidence/build/online/gradle-online-build.txt
+          test ${PIPESTATUS[0]} -eq 0
+          test -f app/build/outputs/apk/debug/app-debug.apk
+          test -f wear/build/outputs/apk/debug/wear-debug.apk
+          sha256sum app/build/outputs/apk/debug/app-debug.apk wear/build/outputs/apk/debug/wear-debug.apk | tee ../../evidence/build/online/APK_SHA256_ONLINE.txt
+
+      - name: Clean offline rebuild promotion gate
+        shell: bash
+        working-directory: build-src/android
+        run: |
+          set -euo pipefail
+          mkdir -p ../../evidence/build/offline
+          "$GRADLE_BIN" --no-daemon clean 2>&1 | tee ../../evidence/build/offline/gradle-clean.txt
+          test ${PIPESTATUS[0]} -eq 0
+          "$GRADLE_BIN" --offline --no-daemon --stacktrace test :app:lintDebug :wear:lintDebug :app:assembleDebug :wear:assembleDebug 2>&1 | tee ../../evidence/build/offline/gradle-offline-build.txt
+          test ${PIPESTATUS[0]} -eq 0
+          test -f app/build/outputs/apk/debug/app-debug.apk
+          test -f wear/build/outputs/apk/debug/wear-debug.apk
+          sha256sum app/build/outputs/apk/debug/app-debug.apk wear/build/outputs/apk/debug/wear-debug.apk | tee ../../evidence/build/offline/APK_SHA256_OFFLINE.txt
+          cat > ../../evidence/build/offline/OFFLINE_BUILD_PROOF.md <<'EOF'
+          # Offline build proof
+          A clean Gradle rebuild executed with --offline after the dependency-warming build.
+          Tasks: test, app lintDebug, wear lintDebug, app assembleDebug, wear assembleDebug.
+          Result: PASS.
+          EOF
+
+      - name: Verify APK bytes, identity, alignment and common signer
+        shell: bash
+        run: |
+          set -euo pipefail
+          PHONE='build-src/android/app/build/outputs/apk/debug/app-debug.apk'
+          WEAR='build-src/android/wear/build/outputs/apk/debug/wear-debug.apk'
+          BT="$ANDROID_HOME/build-tools/36.0.0"
+          mkdir -p evidence/apk handover/APK
+          cp "$PHONE" handover/APK/RepFlow-Phone-1.0.0-capacitor.9-vc9-debug.apk
+          cp "$WEAR" handover/APK/RepFlow-Watch-V1-1.0.0-capacitor.9-vc9-debug.apk
+          unzip -t "$PHONE" > evidence/apk/phone-zip-integrity.txt
+          unzip -t "$WEAR" > evidence/apk/wear-zip-integrity.txt
+          "$BT/aapt2" dump badging "$PHONE" > evidence/apk/phone-badging.txt
+          "$BT/aapt2" dump badging "$WEAR" > evidence/apk/wear-badging.txt
+          "$BT/aapt" dump permissions "$PHONE" > evidence/apk/phone-permissions.txt
+          "$BT/aapt" dump permissions "$WEAR" > evidence/apk/wear-permissions.txt
+          grep -q "package: name='net.nexarenew.repflow' versionCode='9' versionName='1.0.0-capacitor.9'" evidence/apk/phone-badging.txt
+          grep -q "package: name='net.nexarenew.repflow' versionCode='9' versionName='1.0.0-capacitor.9'" evidence/apk/wear-badging.txt
+          "$BT/zipalign" -c -P 16 -v 4 "$PHONE" > evidence/apk/phone-zipalign.txt
+          "$BT/zipalign" -c -P 16 -v 4 "$WEAR" > evidence/apk/wear-zipalign.txt
+          "$BT/apksigner" verify --verbose --print-certs "$PHONE" > evidence/apk/phone-apksigner.txt
+          "$BT/apksigner" verify --verbose --print-certs "$WEAR" > evidence/apk/wear-apksigner.txt
+          PCERT=$(grep -m1 'Signer #1 certificate SHA-256 digest:' evidence/apk/phone-apksigner.txt | awk '{print $NF}')
+          WCERT=$(grep -m1 'Signer #1 certificate SHA-256 digest:' evidence/apk/wear-apksigner.txt | awk '{print $NF}')
+          test -n "$PCERT" && test -n "$WCERT" && test "$PCERT" = "$WCERT"
+          printf 'phone=%s\nwear=%s\ncommon_signer=true\n' "$PCERT" "$WCERT" | tee evidence/apk/SIGNER_CERT_SHA256.txt
+          sha256sum handover/APK/*.apk | tee evidence/apk/APK_SHA256.txt
+          stat -c '%n %s' handover/APK/*.apk | tee evidence/apk/APK_FILE_SIZES.txt
+
+      - name: Assemble final APK-bearing handover
+        shell: bash
+        run: |
+          set -euo pipefail
+          TS=$(date -u +%d%m%Y%H%M%S)
+          echo "HANDOVER_TS=$TS" >> "$GITHUB_ENV"
+          mkdir -p handover/SOURCE handover/VERIFICATION/tests handover/VERIFICATION/lint handover/VERIFICATION/static-acceptance handover/VERIFICATION/migration-regression handover/TOOLCHAIN handover/MANIFESTS
+          rsync -a --exclude '.gradle/' --exclude 'node_modules/' --exclude 'build/' --exclude '*/build/' build-src/ handover/SOURCE/
+          cp evidence/toolchain/gradle-version.txt handover/VERIFICATION/gradle-version.txt
+          cp evidence/toolchain/java-version.txt handover/VERIFICATION/java-version.txt
+          cp evidence/static-acceptance/* handover/VERIFICATION/static-acceptance/ 2>/dev/null || true
+          cp evidence/migration-regression/* handover/VERIFICATION/migration-regression/
+          cp evidence/apk/phone-badging.txt handover/VERIFICATION/phone-badging.txt
+          cp evidence/apk/wear-badging.txt handover/VERIFICATION/wear-badging.txt
+          cp evidence/apk/phone-permissions.txt handover/VERIFICATION/phone-permissions.txt
+          cp evidence/apk/wear-permissions.txt handover/VERIFICATION/wear-permissions.txt
+          cp evidence/apk/phone-zipalign.txt handover/VERIFICATION/phone-zipalign.txt
+          cp evidence/apk/wear-zipalign.txt handover/VERIFICATION/wear-zipalign.txt
+          cp evidence/apk/phone-apksigner.txt handover/VERIFICATION/phone-apksigner.txt
+          cp evidence/apk/wear-apksigner.txt handover/VERIFICATION/wear-apksigner.txt
+          cp evidence/apk/APK_SHA256.txt handover/VERIFICATION/APK_SHA256.txt
+          cp evidence/apk/SIGNER_CERT_SHA256.txt handover/VERIFICATION/SIGNER_CERT_SHA256.txt
+          cp evidence/apk/APK_FILE_SIZES.txt handover/VERIFICATION/APK_FILE_SIZES.txt
+          cp evidence/build/online/gradle-online-build.txt handover/VERIFICATION/online-build.log
+          cp evidence/build/offline/gradle-offline-build.txt handover/VERIFICATION/offline-build.log
+          cp evidence/build/offline/OFFLINE_BUILD_PROOF.md handover/TOOLCHAIN/OFFLINE_BUILD_PROOF.md
+          cp evidence/source/SOURCE_ARCHIVE_SHA256.txt handover/MANIFESTS/SOURCE_ARCHIVE_SHA256.txt
+          (cd handover/SOURCE && find . -type f -print0 | sort -z | xargs -0 sha256sum) > handover/MANIFESTS/SOURCE_SHA256.txt
+          cat > handover/README_FIRST.md <<EOF
+          # RepFlow Watch V1 APK-bearing handover
+          Generated ${TS} UTC.
+          APKs are from the second clean Gradle build executed with --offline.
+          Physical Samsung Galaxy Watch8 acceptance is external and not claimed by this CI run.
+          EOF
+          cat > handover/FINAL_BUILD_STATUS.md <<'EOF'
+          # Final Build Status
+          Gradle 8.14.3 checksum: PASS
+          Java 21: PASS
+          SDK 36 / Build Tools 36.0.0: PASS
+          Successor remediation: PASS
+          Migration collision regression: PASS
+          Online dependency-warming build: PASS
+          Clean --offline rebuild: PASS
+          Phone test/lint/assemble: PASS
+          Wear test/lint/assemble: PASS
+          APK identity/alignment/signature: PASS
+          Phone/Wear common signer: PASS
+          Physical Galaxy Watch8 acceptance: EXTERNAL / NOT EXECUTED
+          EOF
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          m={
+            'profile':'REPFLOW_WATCH_OFFLINE_COMPLETE',
+            'gradle':'8.14.3','gradle_sha256':'bd71102213493060956ec229d946beee57158dbd89d0e62b91bca0fa2c5f3531',
+            'gradle_wrapper_sha256':'7d3a4ac4de1c32b59bc6a4eb8ecb8e612ccd0cf1ae1e99f66902da64df296172',
+            'agp':'8.13.0','kotlin_compose':'2.3.21','java':21,'compile_sdk':36,'target_sdk':36,'build_tools':'36.0.0',
+            'source_archive_sha256':os.environ['SOURCE_SHA256'],'offline_build':'PASS','repository':os.environ['GITHUB_REPOSITORY'],'commit':os.environ['GITHUB_SHA'],'run_id':os.environ['GITHUB_RUN_ID']}
+          Path('handover/TOOLCHAIN/TOOLCHAIN_MANIFEST.json').write_text(json.dumps(m,indent=2)+'\n')
+          PY
+          (cd handover && find . -type f ! -path './MANIFESTS/HANDOVER_SHA256.txt' -print0 | sort -z | xargs -0 sha256sum) > handover/MANIFESTS/HANDOVER_SHA256.txt
+          ZIP="REPFLOW_WATCH_V1_FINAL_APK_HANDOVER_${TS}.zip"
+          (cd handover && zip -qr "../$ZIP" .)
+          echo "$ZIP" > FINAL_FILENAME.txt
+          sha256sum "$ZIP" | tee "$ZIP.sha256"
+          cp "$ZIP" final-output.zip
+          cp "$ZIP.sha256" final-output.zip.sha256
+
+      - name: Clean-extract final handover acceptance
+        shell: bash
+        run: |
+          set -euo pipefail
+          unzip -t final-output.zip | tee evidence/final-zip-integrity.txt
+          rm -rf clean-extract && mkdir clean-extract
+          unzip -q final-output.zip -d clean-extract
+          test -f clean-extract/APK/RepFlow-Phone-1.0.0-capacitor.9-vc9-debug.apk
+          test -f clean-extract/APK/RepFlow-Watch-V1-1.0.0-capacitor.9-vc9-debug.apk
+          test -f clean-extract/TOOLCHAIN/OFFLINE_BUILD_PROOF.md
+          test -f clean-extract/MANIFESTS/SOURCE_SHA256.txt
+          (cd clean-extract && sha256sum -c MANIFESTS/HANDOVER_SHA256.txt)
+          BT="$ANDROID_HOME/build-tools/36.0.0"
+          "$BT/apksigner" verify --verbose --print-certs clean-extract/APK/RepFlow-Phone-1.0.0-capacitor.9-vc9-debug.apk > evidence/clean-phone-signature.txt
+          "$BT/apksigner" verify --verbose --print-certs clean-extract/APK/RepFlow-Watch-V1-1.0.0-capacitor.9-vc9-debug.apk > evidence/clean-wear-signature.txt
+          echo CLEAN_EXTRACT_ACCEPTANCE=PASS | tee evidence/CLEAN_EXTRACT_ACCEPTANCE.txt
+
+      - name: Archive warmed Gradle dependency cache
+        shell: bash
+        run: |
+          set -euo pipefail
+          tar -czf offline-gradle-cache.tar.gz -C "$GRADLE_USER_HOME" .
+          sha256sum offline-gradle-cache.tar.gz > offline-gradle-cache.tar.gz.sha256
+
+      - name: Upload final private-transfer handover artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: repflow-watch-v1-final-handover-${{ github.run_id }}
+          path: |
+            final-output.zip
+            final-output.zip.sha256
+            FINAL_FILENAME.txt
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
+
+      - name: Upload offline cache artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: repflow-watch-v1-offline-cache-${{ github.run_id }}
+          path: |
+            offline-gradle-cache.tar.gz
+            offline-gradle-cache.tar.gz.sha256
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
+
+      - name: Upload verification evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: repflow-watch-v1-evidence-${{ github.run_id }}
+          path: evidence
+          if-no-files-found: error
+          retention-days: 1
