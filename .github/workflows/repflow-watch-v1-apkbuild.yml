@@ -39,12 +39,19 @@ jobs:
           mkdir build-src
           tar -xzf /tmp/repflow-watch-source.tar.gz -C build-src
           test -f build-src/package.json
-          test -f build-src/android/settings.gradle
-          test -f build-src/android/app/build.gradle
-          test -f build-src/android/wear/build.gradle
+          test -f build-src/package-lock.json
           test -f build-src/native/wear/build.gradle
+          test -f build-src/scripts/bootstrap-capacitor.sh
           sha256sum /tmp/repflow-watch-source.tar.gz | tee evidence/source/SOURCE_ARCHIVE_SHA256.txt
+          find build-src -maxdepth 3 -type f -print | sort | tee evidence/source/SOURCE_FILE_INVENTORY.txt
           find build-src/verification -maxdepth 3 -type f -print 2>/dev/null | sort | tee evidence/source/VERIFIER_INVENTORY.txt || true
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: build-src/package-lock.json
 
       - name: Set up Java 21
         uses: actions/setup-java@v4
@@ -57,6 +64,8 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p evidence/toolchain
+          node --version | tee evidence/toolchain/node-version.txt
+          npm --version | tee -a evidence/toolchain/node-version.txt
           java -version 2>&1 | tee evidence/toolchain/java-version.txt
           javac -version 2>&1 | tee -a evidence/toolchain/java-version.txt
           java -version 2>&1 | grep -Eq 'version "21[.]|openjdk version "21[.]'
@@ -93,6 +102,27 @@ jobs:
           grep -q '^Gradle 8.14.3$' evidence/toolchain/gradle-version.txt
           sha256sum "$ZIP" | tee evidence/toolchain/gradle-distribution-sha256.txt
           echo "GRADLE_BIN=$GRADLE_BIN" >> "$GITHUB_ENV"
+
+      - name: Materialise generated Android project only if absent
+        shell: bash
+        working-directory: build-src
+        run: |
+          set -euo pipefail
+          mkdir -p ../evidence/bootstrap
+          if [[ -f android/settings.gradle && -f android/app/build.gradle && -f android/wear/build.gradle ]]; then
+            echo 'ANDROID_PROJECT_PREEXISTED=true' | tee ../evidence/bootstrap/bootstrap.txt
+          else
+            echo 'ANDROID_PROJECT_PREEXISTED=false' | tee ../evidence/bootstrap/bootstrap.txt
+            chmod +x scripts/*.sh
+            bash scripts/bootstrap-capacitor.sh 2>&1 | tee -a ../evidence/bootstrap/bootstrap.txt
+            test ${PIPESTATUS[0]} -eq 0
+          fi
+          test -f android/settings.gradle
+          test -f android/app/build.gradle
+          test -f android/wear/build.gradle
+          test -f android/gradle/wrapper/gradle-wrapper.properties
+          test -f android/gradle/wrapper/gradle-wrapper.jar
+          echo 'ANDROID_PROJECT_MATERIALISED=PASS' | tee -a ../evidence/bootstrap/bootstrap.txt
 
       - name: Verify locked generated Android identity and pins
         shell: bash
@@ -287,6 +317,8 @@ jobs:
           rsync -a --exclude '.gradle/' --exclude 'node_modules/' --exclude 'build/' --exclude '*/build/' build-src/ handover/SOURCE/
           cp evidence/toolchain/gradle-version.txt handover/VERIFICATION/gradle-version.txt
           cp evidence/toolchain/java-version.txt handover/VERIFICATION/java-version.txt
+          cp evidence/toolchain/node-version.txt handover/VERIFICATION/node-version.txt
+          cp evidence/bootstrap/bootstrap.txt handover/VERIFICATION/bootstrap.txt
           cp evidence/static-acceptance/* handover/VERIFICATION/static-acceptance/ 2>/dev/null || true
           cp evidence/migration-regression/* handover/VERIFICATION/migration-regression/
           cp evidence/apk/phone-badging.txt handover/VERIFICATION/phone-badging.txt
@@ -316,6 +348,7 @@ jobs:
           Gradle 8.14.3 checksum: PASS
           Java 21: PASS
           SDK 36 / Build Tools 36.0.0: PASS
+          Generated Android bootstrap: PASS
           Successor remediation: PASS
           Migration collision regression: PASS
           Online dependency-warming build: PASS
