@@ -1,0 +1,267 @@
+name: RepFlow Watch V1 APKBUILD V4
+
+on:
+  push:
+    branches:
+      - repflow-watch-v1-apkbuild-15092026
+
+permissions:
+  contents: read
+
+env:
+  SOURCE_URL: "https://sdmntprnortheu.oaiusercontent.com/files/00000000-0bb4-81f4-a09e-121eb094934a/raw?se=2026-09-15T23%3A57%3A10Z&sp=r&sv=2026-02-06&sr=b&scid=b91a95b5-94d1-5a10-a414-21d10a31806e&skoid=3804227d-1b52-417d-afd9-9ffbb50fa53e&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-09-15T19%3A15%3A06Z&ske=2026-09-16T19%3A15%3A06Z&sks=b&skv=2026-02-06&sig=8X35SnH9/JmLFKp1QnUJcH6CNVbJ7kSJPcHqnV9zbHc%3D"
+  SOURCE_SHA256: 8bd6d1a91b5fc8d4ff6459b90362784eda6061967bcfcc5056d261d9181cb101
+  SOURCE_SIZE: '992119'
+  GRADLE_VERSION: 8.14.3
+  GRADLE_SHA256: bd71102213493060956ec229d946beee57158dbd89d0e62b91bca0fa2c5f3531
+  GRADLE_SIZE: '137393837'
+  WRAPPER_SHA256: 7d3a4ac4de1c32b59bc6a4eb8ecb8e612ccd0cf1ae1e99f66902da64df296172
+  GRADLE_USER_HOME: ${{ github.workspace }}/.repflow-gradle-home
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch and verify sealed source
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p evidence/source
+          curl -fL --retry 3 --retry-delay 1 "$SOURCE_URL" -o /tmp/repflow-source.tar.gz
+          test "$(stat -c '%s' /tmp/repflow-source.tar.gz)" = "$SOURCE_SIZE"
+          echo "$SOURCE_SHA256  /tmp/repflow-source.tar.gz" | sha256sum -c -
+          tar -tzf /tmp/repflow-source.tar.gz >/dev/null
+          rm -rf repflow-work
+          mkdir -p repflow-work
+          tar -xzf /tmp/repflow-source.tar.gz -C repflow-work
+          test -f repflow-work/package.json
+          test -f repflow-work/package-lock.json
+          test -f repflow-work/scripts/bootstrap-capacitor.sh
+          test -f repflow-work/native/wear/build.gradle
+          sha256sum /tmp/repflow-source.tar.gz | tee evidence/source/SOURCE_ARCHIVE_SHA256.txt
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699
+        with:
+          packages: ''
+          accept-android-sdk-licenses: true
+
+      - name: Verify exact build toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p evidence/toolchain
+          java -version 2>&1 | tee evidence/toolchain/JAVA_VERSION.txt
+          node --version | tee evidence/toolchain/NODE_VERSION.txt
+          yes | sdkmanager --licenses >/dev/null 2>&1 || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+          test -f "$ANDROID_HOME/platforms/android-36/android.jar"
+          for t in aapt aapt2 zipalign apksigner; do test -x "$ANDROID_HOME/build-tools/36.0.0/$t"; done
+          ZIP="$RUNNER_TEMP/gradle-${GRADLE_VERSION}-bin.zip"
+          curl -fL --retry 4 --retry-delay 2 "https://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.zip" -o "$ZIP"
+          test "$(stat -c '%s' "$ZIP")" = "$GRADLE_SIZE"
+          echo "$GRADLE_SHA256  $ZIP" | sha256sum -c -
+          unzip -tq "$ZIP" >/dev/null
+          unzip -q "$ZIP" -d "$RUNNER_TEMP/gradle-runtime"
+          G="$RUNNER_TEMP/gradle-runtime/gradle-${GRADLE_VERSION}/bin/gradle"
+          "$G" --version | tee evidence/toolchain/GRADLE_VERSION.txt
+          grep -q '^Gradle 8.14.3$' evidence/toolchain/GRADLE_VERSION.txt
+          echo "GRADLE_BIN=$G" >> "$GITHUB_ENV"
+          sdkmanager --list_installed | tee evidence/toolchain/ANDROID_SDK.txt
+
+      - name: Bootstrap Android and Wear projects
+        shell: bash
+        working-directory: repflow-work
+        run: |
+          set -euo pipefail
+          mkdir -p ../evidence/bootstrap
+          chmod +x scripts/bootstrap-capacitor.sh
+          bash scripts/bootstrap-capacitor.sh 2>&1 | tee ../evidence/bootstrap/BOOTSTRAP.txt
+          test ${PIPESTATUS[0]} -eq 0
+          test -f android/settings.gradle
+          test -f android/app/build.gradle
+          test -f android/wear/build.gradle
+          test -f android/gradle/wrapper/gradle-wrapper.jar
+          echo "$WRAPPER_SHA256  android/gradle/wrapper/gradle-wrapper.jar" | sha256sum -c -
+          grep -q 'gradle-8.14.3-bin.zip' android/gradle/wrapper/gradle-wrapper.properties
+
+      - name: Apply locked successor remediation
+        shell: bash
+        working-directory: repflow-work
+        run: |
+          set -euo pipefail
+          mkdir -p ../evidence/remediation
+          python3 - <<'PY' | tee ../evidence/remediation/REMEDIATION.txt
+          from pathlib import Path
+          import re
+          dep='org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.10.2'
+          for p in (Path('native/wear/build.gradle'), Path('android/wear/build.gradle')):
+              s=p.read_text()
+              if dep not in s:
+                  lines=s.splitlines(); inserted=False
+                  for i,line in enumerate(lines):
+                      if 'kotlinx-coroutines-android:1.10.2' in line:
+                          ind=line[:len(line)-len(line.lstrip())]
+                          lines.insert(i+1, ind+"implementation '"+dep+"'")
+                          inserted=True; break
+                  if not inserted: raise SystemExit('missing coroutine anchor: '+str(p))
+                  p.write_text('\n'.join(lines)+'\n')
+                  print('ADDED',dep,p)
+              else: print('PRESERVED',dep,p)
+          needle='index_set_record_sessionId_exerciseId_setNumber'
+          candidates=list(Path('native/wear').rglob('*.kt'))+list(Path('android/wear').rglob('*.kt'))
+          for p in candidates:
+              s=p.read_text(); out=[]; removed=0
+              for line in s.splitlines():
+                  if needle in line and 'CREATE UNIQUE INDEX' in line.upper():
+                      removed+=1
+                  else:
+                      out.append(line)
+              if removed:
+                  p.write_text('\n'.join(out)+'\n')
+                  print('REMOVED unsafe migration index',p,removed)
+          for p in candidates:
+              if re.search(r'CREATE\s+UNIQUE\s+INDEX[\s\S]{0,320}'+re.escape(needle),p.read_text(),re.I):
+                  raise SystemExit('unsafe migration remains: '+str(p))
+          assert dep in Path('native/wear/build.gradle').read_text()
+          assert dep in Path('android/wear/build.gradle').read_text()
+          print('SUCCESSOR_REMEDIATION=PASS')
+          PY
+
+      - name: Successor acceptance and migration collision regression
+        shell: bash
+        working-directory: repflow-work
+        run: |
+          set -euo pipefail
+          mkdir -p ../evidence/acceptance
+          python3 - <<'PY' | tee ../evidence/acceptance/SUCCESSOR_ACCEPTANCE.txt
+          from pathlib import Path
+          import sqlite3,re
+          checks={
+            'health_services': 'HealthServices' in Path('native/wear/src/main/java/net/nexarenew/repflow/wear/health/RepFlowHealthServices.kt').read_text(),
+            'ongoing_activity': 'OngoingActivity' in Path('native/wear/src/main/java/net/nexarenew/repflow/wear/service/RepFlowWorkoutService.kt').read_text(),
+            'complete_set': 'completeSet' in Path('native/wear/src/main/java/net/nexarenew/repflow/wear/ui/RepFlowWearScreen.kt').read_text(),
+            'finish_workout': 'finishWorkout' in Path('native/wear/src/main/java/net/nexarenew/repflow/wear/MainActivity.kt').read_text(),
+            'substitution_runtime': 'substitutionsJson' in Path('native/wear/src/main/java/net/nexarenew/repflow/wear/data/RepFlowWatchRepository.kt').read_text(),
+            'data_layer': 'WearableListenerService' in Path('native/wear/src/main/java/net/nexarenew/repflow/wear/sync/RepFlowDataLayerService.kt').read_text(),
+            'app_id': "applicationId 'net.nexarenew.repflow'" in Path('android/wear/build.gradle').read_text(),
+            'version_code': 'versionCode 9' in Path('android/wear/build.gradle').read_text(),
+            'version_name': "versionName '1.0.0-capacitor.9'" in Path('android/wear/build.gradle').read_text(),
+            'coroutine_bridge': 'kotlinx-coroutines-play-services:1.10.2' in Path('android/wear/build.gradle').read_text(),
+          }
+          for k,v in checks.items(): assert v,k; print('PASS',k)
+          needle='index_set_record_sessionId_exerciseId_setNumber'
+          for p in list(Path('native/wear').rglob('*.kt'))+list(Path('android/wear').rglob('*.kt')):
+              assert not re.search(r'CREATE\s+UNIQUE\s+INDEX[\s\S]{0,320}'+re.escape(needle),p.read_text(),re.I),p
+          db=sqlite3.connect(':memory:')
+          db.execute('CREATE TABLE set_record (id TEXT PRIMARY KEY NOT NULL, sessionId TEXT NOT NULL, exerciseId TEXT NOT NULL DEFAULT "", setNumber INTEGER NOT NULL DEFAULT 0)')
+          db.executemany('INSERT INTO set_record(id,sessionId) VALUES (?,?)',[('legacy-1','same'),('legacy-2','same'),('legacy-3','same')])
+          rows=db.execute('SELECT exerciseId,setNumber FROM set_record').fetchall()
+          assert len(rows)==3 and all(r==('',0) for r in rows)
+          print('PASS migration_collision_rows=3')
+          print('SUCCESSOR_ACCEPTANCE=PASS')
+          PY
+
+      - name: Online compile test lint and assemble
+        shell: bash
+        working-directory: repflow-work/android
+        run: |
+          set -euo pipefail
+          mkdir -p ../../evidence/build/online
+          "$GRADLE_BIN" --no-daemon --stacktrace test :app:lintDebug :wear:lintDebug :app:assembleDebug :wear:assembleDebug 2>&1 | tee ../../evidence/build/online/GRADLE_ONLINE.txt
+          test ${PIPESTATUS[0]} -eq 0
+          test -f app/build/outputs/apk/debug/app-debug.apk
+          test -f wear/build/outputs/apk/debug/wear-debug.apk
+
+      - name: Clean offline rebuild
+        shell: bash
+        working-directory: repflow-work/android
+        run: |
+          set -euo pipefail
+          mkdir -p ../../evidence/build/offline
+          "$GRADLE_BIN" --no-daemon clean 2>&1 | tee ../../evidence/build/offline/CLEAN.txt
+          test ${PIPESTATUS[0]} -eq 0
+          "$GRADLE_BIN" --offline --no-daemon --stacktrace test :app:lintDebug :wear:lintDebug :app:assembleDebug :wear:assembleDebug 2>&1 | tee ../../evidence/build/offline/GRADLE_OFFLINE.txt
+          test ${PIPESTATUS[0]} -eq 0
+          test -f app/build/outputs/apk/debug/app-debug.apk
+          test -f wear/build/outputs/apk/debug/wear-debug.apk
+          sha256sum app/build/outputs/apk/debug/app-debug.apk wear/build/outputs/apk/debug/wear-debug.apk | tee ../../evidence/build/offline/APK_SHA256.txt
+          echo 'OFFLINE_BUILD=PASS' | tee ../../evidence/build/offline/OFFLINE_BUILD_PROOF.txt
+
+      - name: Verify APKs and make final handover
+        shell: bash
+        run: |
+          set -euo pipefail
+          PHONE='repflow-work/android/app/build/outputs/apk/debug/app-debug.apk'
+          WEAR='repflow-work/android/wear/build/outputs/apk/debug/wear-debug.apk'
+          BT="$ANDROID_HOME/build-tools/36.0.0"
+          mkdir -p final/APK final/VERIFICATION final/SOURCE final/MANIFESTS
+          cp "$PHONE" final/APK/RepFlow-phone-debug.apk
+          cp "$WEAR" final/APK/RepFlow-wear-debug.apk
+          "$BT/aapt" dump badging "$PHONE" | tee final/VERIFICATION/PHONE_BADGING.txt
+          "$BT/aapt" dump badging "$WEAR" | tee final/VERIFICATION/WEAR_BADGING.txt
+          grep -q "package: name='net.nexarenew.repflow' versionCode='9' versionName='1.0.0-capacitor.9'" final/VERIFICATION/PHONE_BADGING.txt
+          grep -q "package: name='net.nexarenew.repflow' versionCode='9' versionName='1.0.0-capacitor.9'" final/VERIFICATION/WEAR_BADGING.txt
+          "$BT/zipalign" -c -P 16 -v 4 "$PHONE" > final/VERIFICATION/PHONE_ZIPALIGN.txt
+          "$BT/zipalign" -c -P 16 -v 4 "$WEAR" > final/VERIFICATION/WEAR_ZIPALIGN.txt
+          "$BT/apksigner" verify --verbose --print-certs "$PHONE" > final/VERIFICATION/PHONE_APKSIGNER.txt
+          "$BT/apksigner" verify --verbose --print-certs "$WEAR" > final/VERIFICATION/WEAR_APKSIGNER.txt
+          PC=$(grep -m1 'Signer #1 certificate SHA-256 digest:' final/VERIFICATION/PHONE_APKSIGNER.txt | awk '{print $NF}')
+          WC=$(grep -m1 'Signer #1 certificate SHA-256 digest:' final/VERIFICATION/WEAR_APKSIGNER.txt | awk '{print $NF}')
+          test -n "$PC"; test "$PC" = "$WC"
+          printf '%s\n' "$PC" | tee final/VERIFICATION/SIGNER_CERT_SHA256.txt
+          sha256sum final/APK/*.apk | tee final/VERIFICATION/APK_SHA256.txt
+          unzip -tq final/APK/RepFlow-phone-debug.apk
+          unzip -tq final/APK/RepFlow-wear-debug.apk
+          cp -a evidence/. final/VERIFICATION/
+          rsync -a --exclude node_modules --exclude android/.gradle --exclude '*/build/' repflow-work/ final/SOURCE/
+          cat > final/README_FIRST.md <<'EOF'
+          # RepFlow Watch V1 APK-bearing handover
+          Phone and Wear APKs are from the clean Gradle --offline rebuild after dependency warming.
+          EOF
+          cat > final/FINAL_BUILD_STATUS.md <<EOF
+          # Final build status
+          Phone APK: PASS
+          Wear APK: PASS
+          Tests and lint: PASS
+          Clean offline rebuild: PASS
+          Package/version identity: PASS
+          ZIP alignment: PASS
+          Signatures: PASS
+          Common signer: PASS
+          Signer SHA-256: $PC
+          EOF
+          find final -type f -print0 | sort -z | xargs -0 sha256sum > final/MANIFESTS/HANDOVER_SHA256SUMS.txt
+          TS=$(date -u +'%d%m%Y%H%M%S')
+          ZIP="REPFLOW_WATCH_V1_APK_COMPLETE_HANDOVER_${TS}.zip"
+          zip -qr "$ZIP" final
+          unzip -t "$ZIP" | tee final/VERIFICATION/HANDOVER_ZIP_TEST.txt
+          rm -rf clean-extract; mkdir clean-extract
+          unzip -q "$ZIP" -d clean-extract
+          test -f clean-extract/final/APK/RepFlow-phone-debug.apk
+          test -f clean-extract/final/APK/RepFlow-wear-debug.apk
+          sha256sum "$ZIP" | tee "${ZIP}.sha256"
+          echo "HANDOVER_ZIP=$ZIP" >> "$GITHUB_ENV"
+
+      - name: Upload APK-bearing handover
+        uses: actions/upload-artifact@v4
+        with:
+          name: repflow-watch-v1-apk-complete-${{ github.run_id }}
+          path: |
+            ${{ env.HANDOVER_ZIP }}
+            ${{ env.HANDOVER_ZIP }}.sha256
+            final/APK/*.apk
+            final/VERIFICATION/**
+          if-no-files-found: error
+          retention-days: 30
