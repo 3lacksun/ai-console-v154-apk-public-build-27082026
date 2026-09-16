@@ -1,0 +1,136 @@
+name: RepFlow Watch V1 APKBUILD V11 Lint Diagnostic
+
+on:
+  push:
+    branches: [repflow-watch-v1-apkbuild-v11-16092026]
+
+permissions:
+  contents: read
+
+env:
+  BUILD_READY_URL: "https://sdmntprukwest.oaiusercontent.com/files/00000000-b904-8243-b98e-b9fe7d21df99/raw?se=2026-09-16T01%3A18%3A20Z&sp=r&sv=2026-02-06&sr=b&scid=0880f04c-4758-5491-8cd8-ad93de378c12&skoid=3804227d-1b52-417d-afd9-9ffbb50fa53e&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-09-15T19%3A16%3A49Z&ske=2026-09-16T19%3A16%3A49Z&sks=b&skv=2026-02-06&sig=Z9RIy3yPNTROUhnfKnu8fkYSYT4BUvPdALmcDSQXXzQ%3D"
+  BUILD_READY_SHA256: 3679fb7b7c691019d3b79fb929ba6f355f32fff5dab41f27e368c08e7fa9ed68
+  BUILD_READY_SIZE: '1412395'
+  NESTED_SOURCE_SHA256: 990e6d1e06b6af471d737171c5c483135b1c492316cde09f45c0a961564cd17c
+  NESTED_SOURCE_SIZE: '1388368'
+  GRADLE_SHA256: bd71102213493060956ec229d946beee57158dbd89d0e62b91bca0fa2c5f3531
+  GRADLE_SIZE: '137393837'
+  GRADLE_USER_HOME: ${{ github.workspace }}/.repflow-gradle-home
+
+jobs:
+  lint:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Recover source
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p repflow-work /tmp/build-ready
+          curl -fL --retry 3 "$BUILD_READY_URL" -o /tmp/build-ready.zip
+          test "$(stat -c '%s' /tmp/build-ready.zip)" = "$BUILD_READY_SIZE"
+          echo "$BUILD_READY_SHA256  /tmp/build-ready.zip" | sha256sum -c -
+          unzip -q /tmp/build-ready.zip -d /tmp/build-ready
+          NESTED=$(find /tmp/build-ready -type f -name 'repflow-watch-v1-build-source.tar.gz' -print -quit)
+          test "$(stat -c '%s' "$NESTED")" = "$NESTED_SOURCE_SIZE"
+          echo "$NESTED_SOURCE_SHA256  $NESTED" | sha256sum -c -
+          tar -xzf "$NESTED" -C repflow-work
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: '21'}
+      - uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699
+        with: {packages: '', accept-android-sdk-licenses: true}
+      - name: Exact Android and Gradle
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null 2>&1 || true
+          sdkmanager "platforms;android-36" "build-tools;36.0.0" "platform-tools"
+          Z="$RUNNER_TEMP/gradle-8.14.3-bin.zip"
+          curl -fL --retry 4 https://services.gradle.org/distributions/gradle-8.14.3-bin.zip -o "$Z"
+          test "$(stat -c '%s' "$Z")" = "$GRADLE_SIZE"
+          echo "$GRADLE_SHA256  $Z" | sha256sum -c -
+          unzip -q "$Z" -d "$RUNNER_TEMP/gradle"
+          echo "GRADLE_BIN=$RUNNER_TEMP/gradle/gradle-8.14.3/bin/gradle" >> "$GITHUB_ENV"
+      - name: Apply V10 corrections plus standalone metadata
+        working-directory: repflow-work
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          dep='org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.10.2'
+          for p in [Path('native/wear/build.gradle'),Path('android/wear/build.gradle')]:
+              s=p.read_text()
+              if dep not in s:
+                  a="implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2'"
+                  s=s.replace(a,a+"\n    implementation '"+dep+"'")
+              p.write_text(s)
+          composite='Index(value = ["sessionId", "exerciseId", "setNumber"], unique = true)'
+          for p in [Path('native/wear/src/main/java/net/nexarenew/repflow/wear/data/Entities.kt'),Path('android/wear/src/main/java/net/nexarenew/repflow/wear/data/Entities.kt')]:
+              s=p.read_text().replace('Index("sessionId"),\n        '+composite,'Index("sessionId")')
+              p.write_text(s)
+          needle='index_set_record_sessionId_exerciseId_setNumber'
+          for p in [Path('native/wear/src/main/java/net/nexarenew/repflow/wear/data/RepFlowWatchDatabase.kt'),Path('android/wear/src/main/java/net/nexarenew/repflow/wear/data/RepFlowWatchDatabase.kt')]:
+              p.write_text('\n'.join(x for x in p.read_text().splitlines() if not (needle in x and 'CREATE UNIQUE INDEX' in x.upper()))+'\n')
+          for p in [Path('native/wear/src/main/java/net/nexarenew/repflow/wear/health/RepFlowHealthServices.kt'),Path('android/wear/src/main/java/net/nexarenew/repflow/wear/health/RepFlowHealthServices.kt')]:
+              s=p.read_text()
+              s=s.replace('import androidx.health.services.client.HealthServices\n','import androidx.health.services.client.HealthServices\nimport androidx.health.services.client.clearUpdateCallback\nimport androidx.health.services.client.endExercise\nimport androidx.health.services.client.getCapabilities\nimport androidx.health.services.client.startExercise\n')
+              for old in ['import com.google.common.util.concurrent.ListenableFuture\n','import kotlin.coroutines.resume\n','import kotlin.coroutines.resumeWithException\n','import kotlinx.coroutines.suspendCancellableCoroutine\n']:
+                  s=s.replace(old,'')
+              s=s.replace('DataType.TOTAL_CALORIES','DataType.CALORIES_TOTAL')
+              s=s.replace('exerciseClient.getCapabilitiesAsync().awaitDirect()','exerciseClient.getCapabilities()')
+              s=s.replace('exerciseClient.startExerciseAsync(\n            ExerciseConfig(','exerciseClient.startExercise(\n            ExerciseConfig(')
+              s=s.replace('        ).awaitDirect()\n        activeSessionId.set(sessionId)','        )\n        activeSessionId.set(sessionId)')
+              s=s.replace('exerciseClient.endExerciseAsync().awaitDirect()','exerciseClient.endExercise()')
+              s=s.replace('exerciseClient.clearUpdateCallbackAsync(callback).awaitDirect()','exerciseClient.clearUpdateCallback(callback)')
+              s=s.replace('update.latestMetrics.getData(DataType.CALORIES_TOTAL).lastOrNull()?.total','update.latestMetrics.getData(DataType.CALORIES_TOTAL)?.total')
+              marker='        override fun onAvailabilityChanged(dataType: DataType<*, *>, availability: Availability) = Unit\n'
+              if 'override fun onRegistered()' not in s:
+                  s=s.replace(marker,marker+'\n        override fun onRegistered() = Unit\n\n        override fun onRegistrationFailed(throwable: Throwable) = Unit\n')
+              cut='\nprivate suspend fun <T> ListenableFuture<T>.awaitDirect()'
+              if cut in s: s=s.split(cut,1)[0].rstrip()+'\n'
+              p.write_text(s)
+          meta='        <meta-data\n            android:name="com.google.android.wearable.standalone"\n            android:value="false" />\n'
+          for p in [Path('native/wear/src/main/AndroidManifest.xml'),Path('android/wear/src/main/AndroidManifest.xml')]:
+              s=p.read_text()
+              if 'com.google.android.wearable.standalone' not in s:
+                  anchor='        android:theme="@style/Theme.RepFlowWear">\n'
+                  if anchor not in s: raise SystemExit('application manifest anchor missing '+str(p))
+                  s=s.replace(anchor,anchor+meta)
+              p.write_text(s)
+              assert 'android:name="com.google.android.wearable.standalone"' in s
+              assert 'android:value="false"' in s
+          assert Path('native/wear/src/main/AndroidManifest.xml').read_text()==Path('android/wear/src/main/AndroidManifest.xml').read_text()
+          print('V11_MANIFEST_STANDALONE_FALSE=PASS')
+          PY
+      - name: Wear lint diagnostic
+        id: lint
+        continue-on-error: true
+        working-directory: repflow-work/android
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p ../../lint-evidence
+          "$GRADLE_BIN" --no-daemon --stacktrace :wear:lintDebug 2>&1 | tee ../../lint-evidence/GRADLE_WEAR_LINT.txt
+          rc=${PIPESTATUS[0]}
+          cp -f wear/build/reports/lint-results-debug.txt ../../lint-evidence/lint-results-debug.txt 2>/dev/null || true
+          cp -f wear/build/reports/lint-results-debug.html ../../lint-evidence/lint-results-debug.html 2>/dev/null || true
+          echo "LINT_EXIT=$rc" | tee ../../lint-evidence/LINT_EXIT.txt
+          exit $rc
+      - name: Show complete lint text
+        if: always()
+        shell: bash
+        run: |
+          echo '=== LINT EXIT ==='
+          cat lint-evidence/LINT_EXIT.txt 2>/dev/null || true
+          echo '=== LINT TEXT ==='
+          cat lint-evidence/lint-results-debug.txt 2>/dev/null || true
+      - name: Upload lint evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: repflow-watch-v11-lint-${{ github.run_id }}
+          path: lint-evidence/
+          if-no-files-found: error
+          retention-days: 7
