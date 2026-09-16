@@ -1,0 +1,306 @@
+name: Build Unified Diff Patcher Path Recovery
+
+on:
+  push:
+    branches:
+      - unified-diff-patcher-path-recovery-16092026
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      SOURCE_URL: 'https://sdmntprpolandcentral.oaiusercontent.com/files/00000000-13e8-820a-9ce1-84fd94a65c24/raw?se=2026-09-16T18%3A54%3A23Z&sp=r&sv=2026-02-06&sr=b&scid=6385449b-a772-54c7-9ac0-7a3100c791cb&skoid=3804227d-1b52-417d-afd9-9ffbb50fa53e&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-09-16T08%3A53%3A10Z&ske=2026-09-17T08%3A53%3A10Z&sks=b&skv=2026-02-06&sig=cWKtV46uFwJoXayoODV3D51J4gtlAVpS/Vl0Kj4BW3k%3D'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.14.3'
+      - name: Install Android SDK components
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager 'platforms;android-36' 'build-tools;36.0.0' 'platform-tools'
+      - name: Create Capacitor project and patch path recovery
+        shell: bash
+        run: |
+          set -euo pipefail
+          WORK="$RUNNER_TEMP/udp-build"
+          mkdir -p "$WORK/web"
+          cd "$WORK"
+          curl -L --fail --retry 3 --retry-delay 2 "$SOURCE_URL" -o web/index.html
+          test "$(wc -c < web/index.html)" -gt 100000
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          p=Path('web/index.html')
+          s=p.read_text(encoding='utf-8')
+          marker="""function findZipEntry(archive, path) {
+            return archive.entries.get(path) || null;
+          }
+          """
+          if marker not in s: raise SystemExit('findZipEntry marker not found')
+          helpers=r'''function findZipEntry(archive, path) {
+            return archive.entries.get(path) || null;
+          }
+
+          function activeZipFileEntries(archive) {
+            return [...archive.entries.values()].filter(e => !e.deleted && !e.name.endsWith('/'));
+          }
+
+          function zipCandidateNames(entries, limit=8) {
+            return entries.slice(0, limit).map(e => e.name).join(', ');
+          }
+
+          function zipResolvedTargetPath(fp, resolvedSourcePath) {
+            if (fp.newPath === null) return resolvedSourcePath;
+            if (fp.oldPath === null) return fp.newPath;
+            if (fp.oldPath === fp.newPath) return resolvedSourcePath;
+            if (resolvedSourcePath === fp.oldPath) return fp.newPath;
+            const sourceLower = resolvedSourcePath.toLowerCase();
+            const oldLower = fp.oldPath.toLowerCase();
+            if (sourceLower.endsWith('/' + oldLower)) {
+              return resolvedSourcePath.slice(0, resolvedSourcePath.length - fp.oldPath.length) + fp.newPath;
+            }
+            if (!fp.oldPath.includes('/') && !fp.newPath.includes('/')) {
+              const slash = resolvedSourcePath.lastIndexOf('/');
+              return (slash >= 0 ? resolvedSourcePath.slice(0, slash + 1) : '') + fp.newPath;
+            }
+            return fp.newPath;
+          }
+
+          async function resolveZipSourceEntry(archive, fp, patchOptions) {
+            const requested = fp.oldPath;
+            const exact = findZipEntry(archive, requested);
+            if (exact && !exact.deleted && !exact.name.endsWith('/')) return {entry:exact, resolvedPath:exact.name, method:'exact'};
+            const files = activeZipFileEntries(archive);
+            const wanted = requested.toLowerCase();
+            const caseExact = files.filter(e => e.name.toLowerCase() === wanted);
+            if (caseExact.length === 1) return {entry:caseExact[0], resolvedPath:caseExact[0].name, method:'case-insensitive exact'};
+            if (caseExact.length > 1) throw new Error(`${requested}: ambiguous case-insensitive ZIP path. Candidates: ${zipCandidateNames(caseExact)}`);
+            const suffix = files.filter(e => e.name.toLowerCase().endsWith('/' + wanted));
+            const base = wanted.split('/').pop();
+            const basename = files.filter(e => e.name.toLowerCase().split('/').pop() === base);
+            const pool = suffix.length ? suffix : basename;
+            if (!pool.length) throw new Error(`${requested}: source file not found in project ZIP. No exact, case-insensitive, suffix, or basename match was found.`);
+            const passing=[];
+            for (const candidate of pool) {
+              try {
+                const bytes=await entryBytes(candidate);
+                applyFilePatchToBytes(bytes, fp, patchOptions);
+                passing.push(candidate);
+              } catch (_) {}
+            }
+            if (passing.length === 1) {
+              const method=suffix.includes(passing[0]) ? 'suffix + hunk validation' : 'basename + hunk validation';
+              return {entry:passing[0], resolvedPath:passing[0].name, method};
+            }
+            if (passing.length > 1) throw new Error(`${requested}: ambiguous source path; ${passing.length} ZIP files match both the filename and patch hunks. Candidates: ${zipCandidateNames(passing)}. Use a more specific path in the diff.`);
+            if (pool.length === 1) throw new Error(`${requested}: candidate ${pool[0].name} was found in the ZIP, but its contents do not match the patch hunks.`);
+            throw new Error(`${requested}: ${pool.length} possible ZIP files were found, but none match the patch hunks. Candidates: ${zipCandidateNames(pool)}.`);
+          }
+          '''
+          s=s.replace(marker, helpers, 1)
+          new_validate=r'''async function validateZipPlan(parsed, archive) {
+            const plan = [];
+            const patchOptions={matchingMode:state.patchMode,minContextAbove:state.minContextAbove,minContextBelow:state.minContextBelow,anchorMaxDrift:state.anchorMaxDrift};
+            for (const fp of parsed.files) {
+              let sourcePath = fp.oldPath || fp.newPath;
+              let targetPath = fp.newPath || fp.oldPath;
+              let originalBytes = new Uint8Array(0);
+              let entry = null;
+              if (fp.oldPath !== null) {
+                const resolved=await resolveZipSourceEntry(archive, fp, patchOptions);
+                entry=resolved.entry;
+                sourcePath=resolved.resolvedPath;
+                targetPath=zipResolvedTargetPath(fp, sourcePath);
+                if (sourcePath !== fp.oldPath) log(`PATH RECOVERY: ${fp.oldPath} -> ${sourcePath} (${resolved.method}).`);
+                originalBytes = await entryBytes(entry);
+              } else {
+                if (findZipEntry(archive, targetPath)) throw new Error(`${targetPath}: patch creates this file, but it already exists.`);
+              }
+              if (fp.oldPath && fp.newPath && sourcePath !== targetPath && findZipEntry(archive, targetPath)) throw new Error(`${targetPath}: rename target already exists.`);
+              const applied = applyFilePatchToBytes(originalBytes, fp, patchOptions);
+              plan.push({ fp, sourcePath, targetPath, entry, originalBytes, newBytes: applied.bytes, matchResults:applied.hunkResults, recoveries:applied.recoveries, action: fp.oldPath===null?'create':fp.newPath===null?'delete':fp.oldPath!==fp.newPath?'rename':'modify' });
+            }
+            return enrichPlan(plan);
+          }
+          '''
+          s,n=re.subn(r'async function validateZipPlan\(parsed, archive\) \{.*?\n\}\n\nasync function getFolderFile', new_validate+'\nasync function getFolderFile', s, count=1, flags=re.S)
+          if n != 1: raise SystemExit('validateZipPlan replacement failed')
+          new_apply=r'''function applyPlanToArchive(baseArchive, plan) {
+            const archive=cloneArchive(baseArchive);
+            for(const item of plan){
+              if(item.action==='create') addZipEntry(archive,item.targetPath,item.newBytes);
+              else if(item.action==='delete') archive.entries.get(item.sourcePath).deleted=true;
+              else if(item.action==='modify') archive.entries.get(item.sourcePath).overrideBytes=item.newBytes;
+              else if(item.action==='rename'){
+                const old=archive.entries.get(item.sourcePath);
+                if(!old) throw new Error(`Resolved source path vanished before apply: ${item.sourcePath}`);
+                old.deleted=true;
+                const copy={...old,name:item.targetPath,deleted:false,overrideBytes:item.newBytes,compData:old.compData.slice()};
+                archive.entries.set(item.targetPath,copy);
+              }
+            }
+            return archive;
+          }
+          '''
+          s,n=re.subn(r'function applyPlanToArchive\(baseArchive, plan\) \{.*?\n\}\n', new_apply, s, count=1, flags=re.S)
+          if n != 1: raise SystemExit('applyPlanToArchive replacement failed')
+          old_verify="""if(item.action==='delete') { if(verify.entries.has(item.fp.oldPath)) throw new Error(`Post-build verification failed: ${item.fp.oldPath} still exists.`); continue; }
+              const target=item.fp.newPath;
+              const e=verify.entries.get(target); if(!e) throw new Error(`Post-build verification failed: ${target} missing.`);"""
+          new_verify="""if(item.action==='delete') { if(verify.entries.has(item.sourcePath)) throw new Error(`Post-build verification failed: ${item.sourcePath} still exists.`); continue; }
+              const target=item.targetPath;
+              const e=verify.entries.get(target); if(!e) throw new Error(`Post-build verification failed: ${target} missing.`);"""
+          if old_verify not in s: raise SystemExit('post-build verify marker not found')
+          s=s.replace(old_verify,new_verify,1)
+          p.write_text(s,encoding='utf-8')
+          PY
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          s=Path('web/index.html').read_text(encoding='utf-8')
+          scripts=re.findall(r'<script(?:\s[^>]*)?>(.*?)</script>',s,re.S|re.I)
+          if not scripts: raise SystemExit('No script found')
+          Path('/tmp/app.js').write_text('\n'.join(scripts),encoding='utf-8')
+          required=['resolveZipSourceEntry','suffix + hunk validation','PATH RECOVERY','archive.entries.get(item.sourcePath)','const target=item.targetPath']
+          missing=[x for x in required if x not in s]
+          if missing: raise SystemExit('Missing patched contracts: '+repr(missing))
+          PY
+          node --check /tmp/app.js
+          cat > package.json <<'EOF'
+          {"name":"unified-diff-patcher-android","version":"1.0.1","private":true,"dependencies":{"@capacitor/core":"8.5.0","@capacitor/android":"8.5.0"},"devDependencies":{"@capacitor/cli":"8.5.0"}}
+          EOF
+          cat > capacitor.config.json <<'EOF'
+          {"appId":"com.unifieddiffpatcher.app","appName":"Unified Diff Patcher","webDir":"web","android":{"allowMixedContent":false}}
+          EOF
+          npm install --no-audit --no-fund
+          npx cap add android
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('android/app/build.gradle')
+          s=p.read_text()
+          s=s.replace('versionCode 1','versionCode 2').replace('versionName "1.0"','versionName "1.0.1"')
+          needle='dependencies {\n'
+          if needle not in s: raise SystemExit('dependencies block not found')
+          s=s.replace(needle,needle+"    implementation 'androidx.documentfile:documentfile:1.0.1'\n",1)
+          p.write_text(s)
+          PY
+          MAIN='android/app/src/main/java/com/unifieddiffpatcher/app/MainActivity.java'
+          mkdir -p "$(dirname "$MAIN")"
+          cat > "$MAIN" <<'EOF'
+          package com.unifieddiffpatcher.app;
+          import android.os.Bundle;
+          import com.getcapacitor.BridgeActivity;
+          public class MainActivity extends BridgeActivity {
+            @Override public void onCreate(Bundle savedInstanceState) {
+              registerPlugin(NativeFileBridgePlugin.class);
+              super.onCreate(savedInstanceState);
+            }
+          }
+          EOF
+          cat > android/app/src/main/java/com/unifieddiffpatcher/app/NativeFileBridgePlugin.java <<'EOF'
+          package com.unifieddiffpatcher.app;
+          import android.app.Activity;
+          import android.content.ContentResolver;
+          import android.content.ContentValues;
+          import android.content.Intent;
+          import android.net.Uri;
+          import android.os.Environment;
+          import android.provider.MediaStore;
+          import android.util.Base64;
+          import androidx.activity.result.ActivityResult;
+          import androidx.documentfile.provider.DocumentFile;
+          import com.getcapacitor.JSObject;
+          import com.getcapacitor.Plugin;
+          import com.getcapacitor.PluginCall;
+          import com.getcapacitor.PluginMethod;
+          import com.getcapacitor.annotation.ActivityCallback;
+          import com.getcapacitor.annotation.CapacitorPlugin;
+          import java.io.ByteArrayOutputStream;
+          import java.io.InputStream;
+          import java.io.OutputStream;
+          import java.util.ArrayList;
+          import java.util.List;
+          @CapacitorPlugin(name="NativeFileBridge")
+          public class NativeFileBridgePlugin extends Plugin {
+            private List<String> safeParts(String path) throws Exception {
+              String p=path==null?"":path.replace('\\','/'); while(p.startsWith("./"))p=p.substring(2);
+              if(p.isEmpty()||p.startsWith("/")||p.contains("\u0000"))throw new Exception("Invalid relative path");
+              String[] raw=p.split("/"); List<String> out=new ArrayList<>();
+              for(String part:raw){if(part.isEmpty()||part.equals(".")||part.equals(".."))throw new Exception("Unsafe relative path");out.add(part);} return out;
+            }
+            private DocumentFile root(String treeUri)throws Exception{DocumentFile r=DocumentFile.fromTreeUri(getContext(),Uri.parse(treeUri));if(r==null||!r.exists())throw new Exception("Folder permission is no longer available");return r;}
+            private DocumentFile find(String treeUri,String path)throws Exception{DocumentFile cur=root(treeUri);for(String part:safeParts(path)){cur=cur.findFile(part);if(cur==null)return null;}return cur;}
+            private DocumentFile ensureParent(String treeUri,List<String> parts)throws Exception{DocumentFile cur=root(treeUri);for(int i=0;i<parts.size()-1;i++){String part=parts.get(i);DocumentFile next=cur.findFile(part);if(next==null)next=cur.createDirectory(part);if(next==null||!next.isDirectory())throw new Exception("Cannot create directory: "+part);cur=next;}return cur;}
+            @PluginMethod public void pickDirectory(PluginCall call){Intent intent=new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION|Intent.FLAG_GRANT_WRITE_URI_PERMISSION|Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION|Intent.FLAG_GRANT_PREFIX_URI_PERMISSION);startActivityForResult(call,intent,"pickDirectoryResult");}
+            @ActivityCallback private void pickDirectoryResult(PluginCall call,ActivityResult result){if(call==null)return;if(result.getResultCode()!=Activity.RESULT_OK||result.getData()==null||result.getData().getData()==null){call.reject("Folder selection cancelled");return;}try{Uri uri=result.getData().getData();int flags=result.getData().getFlags()&(Intent.FLAG_GRANT_READ_URI_PERMISSION|Intent.FLAG_GRANT_WRITE_URI_PERMISSION);getContext().getContentResolver().takePersistableUriPermission(uri,flags);DocumentFile df=DocumentFile.fromTreeUri(getContext(),uri);JSObject ret=new JSObject();ret.put("uri",uri.toString());ret.put("name",df!=null&&df.getName()!=null?df.getName():"Android project folder");call.resolve(ret);}catch(Exception e){call.reject(e.getMessage(),e);}}
+            @PluginMethod public void exists(PluginCall call){try{DocumentFile f=find(call.getString("treeUri"),call.getString("path"));JSObject ret=new JSObject();ret.put("exists",f!=null&&f.exists());call.resolve(ret);}catch(Exception e){call.reject(e.getMessage(),e);}}
+            @PluginMethod public void readFile(PluginCall call){try{DocumentFile f=find(call.getString("treeUri"),call.getString("path"));if(f==null||!f.isFile())throw new Exception("File not found");ContentResolver cr=getContext().getContentResolver();try(InputStream in=cr.openInputStream(f.getUri());ByteArrayOutputStream out=new ByteArrayOutputStream()){if(in==null)throw new Exception("Cannot open file");byte[] buf=new byte[65536];int n;while((n=in.read(buf))>=0)out.write(buf,0,n);JSObject ret=new JSObject();ret.put("base64",Base64.encodeToString(out.toByteArray(),Base64.NO_WRAP));call.resolve(ret);}}catch(Exception e){call.reject(e.getMessage(),e);}}
+            @PluginMethod public void writeFile(PluginCall call){try{String treeUri=call.getString("treeUri");List<String> parts=safeParts(call.getString("path"));byte[] bytes=Base64.decode(call.getString("base64"),Base64.DEFAULT);DocumentFile parent=ensureParent(treeUri,parts);String leaf=parts.get(parts.size()-1);DocumentFile f=parent.findFile(leaf);if(f==null)f=parent.createFile("application/octet-stream",leaf);if(f==null||!f.isFile())throw new Exception("Cannot create file: "+leaf);try(OutputStream out=getContext().getContentResolver().openOutputStream(f.getUri(),"wt")){if(out==null)throw new Exception("Cannot open file for writing");out.write(bytes);}call.resolve();}catch(Exception e){call.reject(e.getMessage(),e);}}
+            @PluginMethod public void deleteFile(PluginCall call){try{DocumentFile f=find(call.getString("treeUri"),call.getString("path"));if(f==null||!f.exists()){call.resolve();return;}if(!f.delete())throw new Exception("Delete failed");call.resolve();}catch(Exception e){call.reject(e.getMessage(),e);}}
+            @PluginMethod public void saveToDownloads(PluginCall call){try{String filename=call.getString("filename");if(filename==null||filename.isBlank()||filename.contains("/")||filename.contains("\\"))throw new Exception("Invalid filename");String mime=call.getString("mimeType","application/octet-stream");byte[] bytes=Base64.decode(call.getString("base64"),Base64.DEFAULT);ContentValues values=new ContentValues();values.put(MediaStore.Downloads.DISPLAY_NAME,filename);values.put(MediaStore.Downloads.MIME_TYPE,mime);values.put(MediaStore.Downloads.RELATIVE_PATH,Environment.DIRECTORY_DOWNLOADS);ContentResolver cr=getContext().getContentResolver();Uri uri=cr.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI,values);if(uri==null)throw new Exception("Cannot create Downloads file");try(OutputStream out=cr.openOutputStream(uri,"w")){if(out==null)throw new Exception("Cannot write Downloads file");out.write(bytes);}JSObject ret=new JSObject();ret.put("uri",uri.toString());call.resolve(ret);}catch(Exception e){call.reject(e.getMessage(),e);}}
+          }
+          EOF
+          mkdir -p android/app/src/main/res/drawable android/app/src/main/res/mipmap-anydpi android/app/src/main/res/mipmap-anydpi-v26 android/app/src/main/res/values
+          cat > android/app/src/main/res/values/ic_launcher_background.xml <<'EOF'
+          <resources><color name="ic_launcher_background">#6750A4</color></resources>
+          EOF
+          cat > android/app/src/main/res/drawable/ic_launcher_foreground.xml <<'EOF'
+          <vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108"><path android:fillColor="#FFFFFF" android:pathData="M28,16 H68 L84,32 V92 H28 Z"/><path android:fillColor="#EADDFF" android:pathData="M68,16 V32 H84 Z"/><path android:fillColor="#146C43" android:pathData="M39,43 H49 V37 H55 V43 H65 V49 H55 V55 H49 V49 H39 Z"/><path android:fillColor="#B3261E" android:pathData="M39,66 H65 V72 H39 Z"/></vector>
+          EOF
+          cat > android/app/src/main/res/drawable/ic_launcher_monochrome.xml <<'EOF'
+          <vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108"><path android:fillColor="#FFFFFF" android:pathData="M28,16 H68 L84,32 V92 H28 Z M39,43 H49 V37 H55 V43 H65 V49 H55 V55 H49 V49 H39 Z M39,66 H65 V72 H39 Z" android:fillType="evenOdd"/></vector>
+          EOF
+          cat > android/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml <<'EOF'
+          <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android"><background android:drawable="@color/ic_launcher_background"/><foreground android:drawable="@drawable/ic_launcher_foreground"/><monochrome android:drawable="@drawable/ic_launcher_monochrome"/></adaptive-icon>
+          EOF
+          cp android/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml android/app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml
+          cat > android/app/src/main/res/mipmap-anydpi/ic_launcher.xml <<'EOF'
+          <vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108"><path android:fillColor="#6750A4" android:pathData="M0,0 H108 V108 H0 Z"/><path android:fillColor="#FFFFFF" android:pathData="M28,16 H68 L84,32 V92 H28 Z"/><path android:fillColor="#EADDFF" android:pathData="M68,16 V32 H84 Z"/><path android:fillColor="#146C43" android:pathData="M39,43 H49 V37 H55 V43 H65 V49 H55 V55 H49 V49 H39 Z"/><path android:fillColor="#B3261E" android:pathData="M39,66 H65 V72 H39 Z"/></vector>
+          EOF
+          cp android/app/src/main/res/mipmap-anydpi/ic_launcher.xml android/app/src/main/res/mipmap-anydpi/ic_launcher_round.xml
+          npx cap sync android
+      - name: Build APK
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/udp-build/android"
+          gradle --no-daemon assembleDebug
+      - name: Verify APK
+        run: |
+          set -euo pipefail
+          WORK="$RUNNER_TEMP/udp-build"
+          APK="$WORK/android/app/build/outputs/apk/debug/app-debug.apk"
+          OUT="$GITHUB_WORKSPACE/UNIFIED_DIFF_PATCHER_PATH_RECOVERY_ICON_16092026-debug.apk"
+          cp "$APK" "$OUT"
+          AAPT2="$ANDROID_HOME/build-tools/36.0.0/aapt2"
+          ZIPALIGN="$ANDROID_HOME/build-tools/36.0.0/zipalign"
+          APKSIGNER="$ANDROID_HOME/build-tools/36.0.0/apksigner"
+          "$ZIPALIGN" -c -P 16 -v 4 "$OUT"
+          "$APKSIGNER" verify --verbose --print-certs "$OUT" | tee "$GITHUB_WORKSPACE/APK_SIGNATURE.txt"
+          "$AAPT2" dump badging "$OUT" | tee "$GITHUB_WORKSPACE/APK_BADGING.txt"
+          sha256sum "$OUT" | tee "$GITHUB_WORKSPACE/APK_SHA256.txt"
+          grep -q "package: name='com.unifieddiffpatcher.app'" "$GITHUB_WORKSPACE/APK_BADGING.txt"
+          cp "$WORK/web/index.html" "$GITHUB_WORKSPACE/UNIFIED_DIFF_PATCHER_PATH_RECOVERY_16092026.html"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: unified-diff-patcher-path-recovery-apk
+          path: |
+            UNIFIED_DIFF_PATCHER_PATH_RECOVERY_ICON_16092026-debug.apk
+            APK_SIGNATURE.txt
+            APK_BADGING.txt
+            APK_SHA256.txt
+            UNIFIED_DIFF_PATCHER_PATH_RECOVERY_16092026.html
+          if-no-files-found: error
+          compression-level: 0
