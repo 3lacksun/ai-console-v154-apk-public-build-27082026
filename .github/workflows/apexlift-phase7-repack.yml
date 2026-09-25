@@ -1,0 +1,94 @@
+name: ApexLift Phase 7 Repack Proven Toolchain
+
+on:
+  push:
+    branches:
+      - apexlift-phase7-toolchain-25092026
+    paths:
+      - .github/workflows/apexlift-phase7-repack.yml
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  repack:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Download proven combined toolchain artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: apexlift-phase7-offline-toolchain
+          path: proven
+          github-token: ${{ github.token }}
+          repository: 3lacksun/ai-console-v154-apk-public-build-27082026
+          run-id: 36153789816
+
+      - name: Verify and split
+        shell: bash
+        run: |
+          set -euo pipefail
+          ls -lh proven
+          (cd proven && sha256sum -c SHA256SUMS.txt)
+          split -b 240M -d -a 2 proven/gradle-user-home.tgz proven/gradle-user-home.tgz.part-
+          sha256sum proven/gradle-user-home.tgz > proven/GRADLE_CACHE_SHA256.txt
+          sha256sum proven/gradle-user-home.tgz.part-* > proven/GRADLE_CACHE_PARTS_SHA256.txt
+          ls -lh proven/gradle-user-home.tgz.part-*
+
+      - name: Upload Android SDK
+        uses: actions/upload-artifact@v4
+        with:
+          name: apexlift-phase7-android-sdk-repack
+          path: |
+            proven/android-sdk-36.tgz
+            proven/TOOLCHAIN_METADATA.txt
+          compression-level: 0
+          retention-days: 2
+
+      - name: Upload Gradle distribution
+        uses: actions/upload-artifact@v4
+        with:
+          name: apexlift-phase7-gradle-813-repack
+          path: |
+            proven/gradle-8.13-bin.zip
+            proven/TOOLCHAIN_METADATA.txt
+          compression-level: 0
+          retention-days: 2
+
+      - name: Upload cache part 00
+        uses: actions/upload-artifact@v4
+        with:
+          name: apexlift-phase7-gradle-cache-00-repack
+          path: proven/gradle-user-home.tgz.part-00
+          compression-level: 0
+          retention-days: 2
+
+      - name: Upload cache part 01
+        uses: actions/upload-artifact@v4
+        with:
+          name: apexlift-phase7-gradle-cache-01-repack
+          path: proven/gradle-user-home.tgz.part-01
+          compression-level: 0
+          retention-days: 2
+
+      - name: Upload cache part 02
+        uses: actions/upload-artifact@v4
+        with:
+          name: apexlift-phase7-gradle-cache-02-repack
+          path: proven/gradle-user-home.tgz.part-02
+          compression-level: 0
+          retention-days: 2
+
+      - name: Upload manifests
+        uses: actions/upload-artifact@v4
+        with:
+          name: apexlift-phase7-toolchain-manifest-repack
+          path: |
+            proven/SHA256SUMS.txt
+            proven/GRADLE_CACHE_SHA256.txt
+            proven/GRADLE_CACHE_PARTS_SHA256.txt
+            proven/TOOLCHAIN_METADATA.txt
+          compression-level: 0
+          retention-days: 2
