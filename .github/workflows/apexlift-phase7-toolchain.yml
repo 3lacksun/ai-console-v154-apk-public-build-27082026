@@ -155,6 +155,9 @@ jobs:
           tar -C gradle-user-home -czf bundle/gradle-user-home.tgz .
           tar -C bundle/sdk -czf bundle/android-sdk-36.tgz .
           rm -rf bundle/sdk
+          split -b 240M -d -a 2 bundle/gradle-user-home.tgz bundle/gradle-user-home.tgz.part-
+          sha256sum bundle/gradle-user-home.tgz > bundle/GRADLE_CACHE_SHA256.txt
+          sha256sum bundle/gradle-user-home.tgz.part-* > bundle/GRADLE_CACHE_PARTS_SHA256.txt
           {
             echo "gradle=8.13"
             echo "gradle_sha256=20f1b1176237254a6fc204d8434196fa11a4cfb387567519c61556e8710aed78"
@@ -170,11 +173,64 @@ jobs:
           (cd bundle && sha256sum gradle-8.13-bin.zip gradle-user-home.tgz android-sdk-36.tgz TOOLCHAIN_METADATA.txt > SHA256SUMS.txt)
           du -h bundle/*
 
-      - name: Upload exact offline toolchain
+      - name: Upload Android SDK 36 bundle
         uses: actions/upload-artifact@v4
         with:
-          name: apexlift-phase7-offline-toolchain
-          path: bundle/
+          name: apexlift-phase7-android-sdk
+          path: |
+            bundle/android-sdk-36.tgz
+            bundle/TOOLCHAIN_METADATA.txt
+          compression-level: 0
+          retention-days: 2
+          if-no-files-found: error
+
+      - name: Upload Gradle 8.13 distribution
+        uses: actions/upload-artifact@v4
+        with:
+          name: apexlift-phase7-gradle-813
+          path: |
+            bundle/gradle-8.13-bin.zip
+            bundle/TOOLCHAIN_METADATA.txt
+          compression-level: 0
+          retention-days: 2
+          if-no-files-found: error
+
+      - name: Upload Gradle cache part 00
+        uses: actions/upload-artifact@v4
+        with:
+          name: apexlift-phase7-gradle-cache-00
+          path: bundle/gradle-user-home.tgz.part-00
+          compression-level: 0
+          retention-days: 2
+          if-no-files-found: error
+
+      - name: Upload Gradle cache part 01
+        uses: actions/upload-artifact@v4
+        with:
+          name: apexlift-phase7-gradle-cache-01
+          path: bundle/gradle-user-home.tgz.part-01
+          compression-level: 0
+          retention-days: 2
+          if-no-files-found: error
+
+      - name: Upload Gradle cache part 02
+        uses: actions/upload-artifact@v4
+        with:
+          name: apexlift-phase7-gradle-cache-02
+          path: bundle/gradle-user-home.tgz.part-02
+          compression-level: 0
+          retention-days: 2
+          if-no-files-found: error
+
+      - name: Upload toolchain hash manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: apexlift-phase7-toolchain-manifest
+          path: |
+            bundle/SHA256SUMS.txt
+            bundle/GRADLE_CACHE_SHA256.txt
+            bundle/GRADLE_CACHE_PARTS_SHA256.txt
+            bundle/TOOLCHAIN_METADATA.txt
           compression-level: 0
           retention-days: 2
           if-no-files-found: error
