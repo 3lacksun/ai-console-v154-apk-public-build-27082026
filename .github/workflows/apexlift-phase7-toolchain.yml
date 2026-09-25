@@ -146,10 +146,9 @@ jobs:
         run: |
           set -euo pipefail
           rm -rf gradle-user-home/daemon gradle-user-home/.tmp || true
-          mkdir -p bundle/sdk
+          mkdir -p bundle/sdk/platforms bundle/sdk/build-tools
           cp gradle-8.13-bin.zip bundle/
-          cp -a "${ANDROID_HOME}/platforms" bundle/sdk/
-          mkdir -p bundle/sdk/build-tools
+          cp -a "${ANDROID_HOME}/platforms/android-36" bundle/sdk/platforms/
           cp -a "${ANDROID_HOME}/build-tools/36.0.0" bundle/sdk/build-tools/
           cp -a "${ANDROID_HOME}/platform-tools" bundle/sdk/
           if [[ -d "${ANDROID_HOME}/licenses" ]]; then cp -a "${ANDROID_HOME}/licenses" bundle/sdk/; fi
