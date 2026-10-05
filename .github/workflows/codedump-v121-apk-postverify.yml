@@ -1,0 +1,73 @@
+name: Code Dump v1.2.1 APK post-build verification
+
+on:
+  push:
+    branches: [ codedump-v121-fix002-apk-waa-postverify-05102026 ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Set up Java 21
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699
+        with:
+          cmdline-tools-version: '14742923'
+          packages: ''
+          accept-android-sdk-licenses: true
+          log-accepted-android-sdk-licenses: false
+      - name: Install Build Tools 36.0.0
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdkmanager "build-tools;36.0.0"
+      - name: Download and verify build bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 --retry-delay 2 "https://sdmntprukwest.oaiusercontent.com/files/00000000-4458-8243-b8da-4ed67028346f/raw?se=2026-10-05T02%3A24%3A12Z&sp=r&sv=2026-02-06&sr=b&scid=564ee9c6-75df-5474-9413-de48c400b009&skoid=3804227d-1b52-417d-afd9-9ffbb50fa53e&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-10-05T01%3A09%3A42Z&ske=2026-10-06T01%3A09%3A42Z&sks=b&skv=2026-02-06&sig=xOrR2smDdQl0DtrKr53W%2BOxZ6YOICUDH1Ju%2BmiGEf4E%3D" -o build.zip
+          echo "f9f014a5e5f4d2bcc563775b6ea3edaf86772ac7612c052561b251b0030f8b18  build.zip" | sha256sum -c -
+          mkdir build && unzip -q build.zip -d build
+          (cd build && sha256sum -c SHA256SUMS.txt)
+      - name: Verify APK signing and manifest identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          APKSIGNER="$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner"
+          AAPT="$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt"
+          "$APKSIGNER" verify --verbose --print-certs build/app-debug.apk | tee debug-signing.txt
+          "$AAPT" dump badging build/app-debug.apk | tee debug-badging.txt
+          grep -q "package: name='app.codedump.tool' versionCode='121' versionName='1.2.1'" debug-badging.txt
+          if "$APKSIGNER" verify build/app-release-unsigned.apk >release-signing.txt 2>&1; then
+            echo "Unsigned release APK unexpectedly verified as signed" >&2
+            exit 1
+          fi
+          grep -q "DOES NOT VERIFY\|No signatures" release-signing.txt || true
+          {
+            echo "Debug APK signing verification: PASS"
+            echo "Debug APK package/version identity: PASS"
+            echo "Unsigned release APK remains unsigned: PASS"
+            echo
+            cat debug-signing.txt
+            echo
+            head -n 5 debug-badging.txt
+          } > APK_POST_BUILD_VERIFICATION.txt
+      - name: Upload verification report
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: code-dump-v1.2.1-apk-post-build-verification
+          if-no-files-found: error
+          retention-days: 30
+          path: APK_POST_BUILD_VERIFICATION.txt
